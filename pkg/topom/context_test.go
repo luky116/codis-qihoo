@@ -14,6 +14,7 @@ func TestSlotState(x *testing.T) {
 	t := openTopom()
 	defer t.Close()
 
+	const tid = 0
 	const sid = 1
 	const gid1 = 1
 	const gid2 = 2

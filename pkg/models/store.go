@@ -34,12 +34,20 @@ func LockPath(product string) string {
 	return filepath.Join(CodisDir, product, "topom")
 }
 
-func SlotPath(product string, sid int) string {
-	return filepath.Join(CodisDir, product, "slots", fmt.Sprintf("slot-%04d", sid))
+func TablePath(product string, tid int) string {
+	return filepath.Join(CodisDir, product, "table", fmt.Sprintf("table-%04d", tid), "meta")
+}
+
+func SlotPath(product string, tid int, sid int) string {
+	return filepath.Join(CodisDir, product, "table", fmt.Sprint("table-%04d", tid), "slots", fmt.Sprintf("slot-%04d", sid))
 }
 
 func GroupDir(product string) string {
 	return filepath.Join(CodisDir, product, "group")
+}
+
+func TableDir(product string) string {
+	return filepath.Join(CodisDir, product, "table")
 }
 
 func ProxyDir(product string) string {
@@ -91,12 +99,16 @@ func (s *Store) LockPath() string {
 	return LockPath(s.product)
 }
 
-func (s *Store) SlotPath(sid int) string {
-	return SlotPath(s.product, sid)
+func (s *Store) SlotPath(tid int , sid int) string {
+	return SlotPath(s.product, tid, sid)
 }
 
 func (s *Store) GroupDir() string {
 	return GroupDir(s.product)
+}
+
+func (s *Store) TableDir() string {
+	return TableDir(s.product)
 }
 
 func (s *Store) ProxyDir() string {
@@ -105,6 +117,10 @@ func (s *Store) ProxyDir() string {
 
 func (s *Store) GroupPath(gid int) string {
 	return GroupPath(s.product, gid)
+}
+
+func (s *Store) TablePath(tid int) string {
+	return TablePath(s.product, tid)
 }
 
 func (s *Store) ProxyPath(token string) string {
@@ -127,10 +143,33 @@ func (s *Store) LoadTopom(must bool) (*Topom, error) {
 	return LoadTopom(s.client, s.product, must)
 }
 
-func (s *Store) SlotMappings() ([]*SlotMapping, error) {
+func (s *Store) AllSlotMappings() ([]*SlotMapping, error) {
+	tables, err := s.ListTable()
+	if err != nil {
+		return nil, err
+	}
+	var MaxSlotNum = 0
+	for _, t := range tables {
+		MaxSlotNum += t.MaxSlotMum
+	}
 	slots := make([]*SlotMapping, MaxSlotNum)
+	for i := range tables {
+		if sm, err := s.SlotMappings(i); err != nil {
+			slots = append(slots, sm...)
+		} else {
+			return  nil, err
+		}
+	}
+	return slots, nil
+}
+func (s *Store) SlotMappings(tid int) ([]*SlotMapping, error) {
+	t, err := s.LoadTable(tid, false )
+	if err != nil {
+		return nil, err
+	}
+	slots := make([]*SlotMapping, t.MaxSlotMum)
 	for i := range slots {
-		m, err := s.LoadSlotMapping(i, false)
+		m, err := s.LoadSlotMapping(tid, i, false)
 		if err != nil {
 			return nil, err
 		}
@@ -143,8 +182,8 @@ func (s *Store) SlotMappings() ([]*SlotMapping, error) {
 	return slots, nil
 }
 
-func (s *Store) LoadSlotMapping(sid int, must bool) (*SlotMapping, error) {
-	b, err := s.client.Read(s.SlotPath(sid), must)
+func (s *Store) LoadSlotMapping(tid int, sid int, must bool) (*SlotMapping, error) {
+	b, err := s.client.Read(s.SlotPath(tid, sid), must)
 	if err != nil || b == nil {
 		return nil, err
 	}
@@ -155,8 +194,8 @@ func (s *Store) LoadSlotMapping(sid int, must bool) (*SlotMapping, error) {
 	return m, nil
 }
 
-func (s *Store) UpdateSlotMapping(m *SlotMapping) error {
-	return s.client.Update(s.SlotPath(m.Id), m.Encode())
+func (s *Store) UpdateSlotMapping(tid int, m *SlotMapping) error {
+	return s.client.Update(s.SlotPath(tid, m.Id), m.Encode())
 }
 
 func (s *Store) ListGroup() (map[int]*Group, error) {
@@ -197,6 +236,47 @@ func (s *Store) UpdateGroup(g *Group) error {
 
 func (s *Store) DeleteGroup(gid int) error {
 	return s.client.Delete(s.GroupPath(gid))
+}
+
+func (s *Store) ListTable() (map[int]*Table, error) {
+	paths, err := s.client.List(s.TableDir(), false)
+	if err != nil {
+		return nil, err
+	}
+	table := make(map[int]*Table)
+	for _, path := range paths {
+		path += "/meta"
+		b, err := s.client.Read(path, true)
+		if err != nil {
+			return nil, err
+		}
+		t := &Table{}
+		if err := jsonDecode(t, b); err != nil {
+			return nil, err
+		}
+		table[t.Id] = t
+	}
+	return table, nil
+}
+
+func (s *Store) LoadTable(tid int, must bool) (*Table, error) {
+	b, err := s.client.Read(s.TablePath(tid), must)
+	if err != nil || b == nil {
+		return nil, err
+	}
+	t := &Table{}
+	if err := jsonDecode(t, b); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (s *Store) UpdateTable(t *Table) error {
+	return s.client.Update(s.TablePath(t.Id), t.Encode())
+}
+
+func (s *Store) DeleteTable(tid int) error {
+	return s.client.Delete(s.TablePath(tid))
 }
 
 func (s *Store) ListProxy() (map[string]*Proxy, error) {
@@ -260,4 +340,11 @@ func ValidateProduct(name string) error {
 		return nil
 	}
 	return errors.Errorf("bad product name = %s", name)
+}
+
+func ValidateTable(name string) error {
+	if regexp.MustCompile(`^\w[\w\.\-]*$`).MatchString(name) {
+		return nil
+	}
+	return errors.Errorf("bad table name = %s", name)
 }

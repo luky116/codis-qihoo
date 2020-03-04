@@ -134,7 +134,7 @@ func (d *forwardSemiAsync) process(s *Slot, r *Request, hkey []byte) (_ *Backend
 type forwardHelper struct {
 }
 
-func (d *forwardHelper) slotsmgrt(s *Slot, hkey []byte, database int32, seed uint) error {
+func (d *forwardHelper) slotsmgrt(s *Slot, hkey []byte, database int, seed uint) error {
 	m := &Request{}
 	m.Multi = []*redis.Resp{
 		redis.NewBulkBytes([]byte("SLOTSMGRTTAGONE")),
@@ -166,7 +166,7 @@ func (d *forwardHelper) slotsmgrt(s *Slot, hkey []byte, database int32, seed uin
 	}
 }
 
-func (d *forwardHelper) slotsmgrtExecWrapper(s *Slot, hkey []byte, database int32, seed uint, multi []*redis.Resp) (_ *redis.Resp, moved bool, _ error) {
+func (d *forwardHelper) slotsmgrtExecWrapper(s *Slot, hkey []byte, database int, seed uint, multi []*redis.Resp) (_ *redis.Resp, moved bool, _ error) {
 	m := &Request{}
 	m.Multi = make([]*redis.Resp, 0, 2+len(multi))
 	m.Multi = append(m.Multi,

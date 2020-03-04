@@ -15,69 +15,77 @@ import (
 )
 
 func (s *Topom) ProcessSlotAction() error {
-	for s.IsOnline() {
-		var (
-			marks = make(map[int]bool)
-			plans = make(map[int]bool)
-		)
-		var accept = func(m *models.SlotMapping) bool {
-			if marks[m.GroupId] || marks[m.Action.TargetId] {
-				return false
-			}
-			if plans[m.Id] {
-				return false
-			}
-			return true
-		}
-		var update = func(m *models.SlotMapping) bool {
-			if m.GroupId != 0 {
-				marks[m.GroupId] = true
-			}
-			marks[m.Action.TargetId] = true
-			plans[m.Id] = true
-			return true
-		}
-		var parallel = math2.MaxInt(1, s.config.MigrationParallelSlots)
-		for parallel > len(plans) {
-			_, ok, err := s.SlotActionPrepareFilter(accept, update)
-			if err != nil {
-				return err
-			} else if !ok {
-				break
-			}
-		}
-		if len(plans) == 0 {
-			return nil
-		}
-		var fut sync2.Future
-		for sid, _ := range plans {
-			fut.Add()
-			go func(sid int) {
-				log.Warnf("slot-[%d] process action", sid)
-				var err = s.processSlotAction(sid)
-				if err != nil {
-					status := fmt.Sprintf("[ERROR] Slot[%04d]: %s", sid, err)
-					s.action.progress.status.Store(status)
-				} else {
-					s.action.progress.status.Store("")
+	table, err := s.tables()
+	if err == nil {
+		return  err
+	}
+	for tid, _ :=range table {
+		for s.IsOnline() {
+			var (
+				marks = make(map[int]bool)
+				plans = make(map[int]bool)
+			)
+			var accept = func(m *models.SlotMapping) bool {
+				if marks[m.GroupId] || marks[m.Action.TargetId] {
+					return false
 				}
-				fut.Done(strconv.Itoa(sid), err)
-			}(sid)
-		}
-		for _, v := range fut.Wait() {
-			if v != nil {
-				return v.(error)
+				if plans[m.Id] {
+					return false
+				}
+				return true
 			}
+			var update = func(m *models.SlotMapping) bool {
+				if m.GroupId != 0 {
+					marks[m.GroupId] = true
+				}
+				marks[m.Action.TargetId] = true
+				plans[m.Id] = true
+				return true
+			}
+			var parallel = math2.MaxInt(1, s.config.MigrationParallelSlots)
+			for parallel > len(plans) {
+				_, ok, err := s.SlotActionPrepareFilter(accept, update, tid)
+				if err != nil {
+					return err
+				} else if !ok {
+					break
+				}
+			}
+			if len(plans) == 0 {
+		//		return nil
+				continue
+			}
+			var fut sync2.Future
+			for sid, _ := range plans {
+				fut.Add()
+				go func(sid int) {
+					log.Warnf("slot-[%d] process action", sid)
+					var err = s.processSlotAction(tid, sid)
+					if err != nil {
+						status := fmt.Sprintf("[ERROR] Slot[%04d]: %s", sid, err)
+						s.action.progress.status.Store(status)
+					} else {
+						s.action.progress.status.Store("")
+					}
+					fut.Done(strconv.Itoa(sid), err)
+				}(sid)
+			}
+			for _, v := range fut.Wait() {
+				if v != nil {
+					return v.(error)
+				}
+			}
+			time.Sleep(time.Millisecond * 10)
 		}
-		time.Sleep(time.Millisecond * 10)
+
 	}
 	return nil
 }
 
-func (s *Topom) processSlotAction(sid int) error {
+func (s *Topom) processSlotAction(tid int, sid int) error {
 	var db int = 0
 	for s.IsOnline() {
-		if exec, err := s.newSlotActionExecutor(sid); err != nil {
+		if exec, err := s.newSlotActionExecutor(tid, sid); err != nil {
 			return err
 		} else if exec == nil {
 			time.Sleep(time.Second)
@@ -89,9 +97,9 @@ func (s *Topom) processSlotAction(sid int) error {
 			log.Debugf("slot-[%d] action executor %d", sid, n)
 
 			if n == 0 && nextdb == -1 {
-				return s.SlotActionComplete(sid)
+				return s.SlotActionComplete(tid, sid)
 			}
-			status := fmt.Sprintf("[OK] Slot[%04d]@DB[%d]=%d", sid, db, n)
+			status := fmt.Sprintf("[OK] Slot[%04d]@DB[%d]=%d", sid, tid, n)
 			s.action.progress.status.Store(status)
 
 			if us := s.GetSlotActionInterval(); us != 0 {

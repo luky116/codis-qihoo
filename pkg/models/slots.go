@@ -14,6 +14,7 @@ const MaxSlotNum = 1024
 
 type Slot struct {
 	Id     int  `json:"id"`
+	TableId int `json:"table_id"`
 	Locked bool `json:"locked,omitempty"`
 
 	BackendAddr        string `json:"backend_addr,omitempty"`
@@ -40,6 +41,7 @@ func ParseForwardMethod(s string) (int, bool) {
 type SlotMapping struct {
 	Id      int `json:"id"`
 	GroupId int `json:"group_id"`
+	TableId int `json:"table_id"`
 
 	Action struct {
 		Index    int    `json:"index,omitempty"`

@@ -26,7 +26,7 @@ type Session struct {
 	CreateUnix int64
 	LastOpUnix int64
 
-	database int32
+	database int
 
 	quit bool
 	exit sync.Once
@@ -284,7 +284,7 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 
 	switch opstr {
 	case "SELECT":
-		return s.handleSelect(r)
+		return s.handleSelect(r, d)
 	case "PING":
 		return s.handleRequestPing(r, d)
 	case "INFO":
@@ -332,19 +332,18 @@ func (s *Session) handleAuth(r *Request) error {
 	return nil
 }
 
-func (s *Session) handleSelect(r *Request) error {
+func (s *Session) handleSelect(r *Request, d *Router) error {
 	if len(r.Multi) != 2 {
 		r.Resp = redis.NewErrorf("ERR wrong number of arguments for 'SELECT' command")
 		return nil
 	}
-	switch db, err := strconv.Atoi(string(r.Multi[1].Value)); {
-	case err != nil:
+	if db, err := strconv.Atoi(string(r.Multi[1].Value)); err != nil {
 		r.Resp = redis.NewErrorf("ERR invalid DB index")
-	case db < 0 || db >= int(s.config.BackendNumberDatabases):
-		r.Resp = redis.NewErrorf("ERR invalid DB index, only accept DB [0,%d)", s.config.BackendNumberDatabases)
-	default:
+	} else if _, ok := d.table[db]; !ok {
+		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist")
+	} else {
 		r.Resp = RespOK
-		s.database = int32(db)
+		s.database = db
 	}
 	return nil
 }
@@ -352,10 +351,14 @@ func (s *Session) handleSelect(r *Request) error {
 func (s *Session) handleRequestPing(r *Request, d *Router) error {
 	var addr string
 	var nblks = len(r.Multi) - 1
+	if _, ok := d.table[r.Database]; !ok {
+		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist")
+		return nil
+	}
 	switch {
 	case nblks == 0:
-		slot := uint32(time.Now().Nanosecond()) % MaxSlotNum
-		return d.dispatchSlot(r, int(slot))
+		slot := time.Now().Nanosecond() % d.table[r.Database].MaxSlotMum
+		return d.dispatchSlot(r, slot)
 	default:
 		addr = string(r.Multi[1].Value)
 		copy(r.Multi[1:], r.Multi[2:])
@@ -371,9 +374,13 @@ func (s *Session) handleRequestPing(r *Request, d *Router) error {
 func (s *Session) handleRequestInfo(r *Request, d *Router) error {
 	var addr string
 	var nblks = len(r.Multi) - 1
+	if _, ok := d.table[r.Database]; !ok {
+		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist", addr)
+		return nil
+	}
 	switch {
 	case nblks == 0:
-		slot := uint32(time.Now().Nanosecond()) % MaxSlotNum
+		slot := time.Now().Nanosecond() % d.table[r.Database].MaxSlotMum
 		return d.dispatchSlot(r, int(slot))
 	default:
 		addr = string(r.Multi[1].Value)
@@ -569,6 +576,10 @@ func (s *Session) handleRequestSlotsInfo(r *Request, d *Router) error {
 
 func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 	var nblks = len(r.Multi) - 1
+	if _, ok := d.table[r.Database]; !ok {
+		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist")
+		return nil
+	}
 	switch {
 	case nblks <= 1:
 		r.Resp = redis.NewErrorf("ERR wrong number of arguments for 'SLOTSSCAN' command")
@@ -578,7 +589,7 @@ func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 	case err != nil:
 		r.Resp = redis.NewErrorf("ERR parse slotnum '%s' failed, %s", r.Multi[1].Value, err)
 		return nil
-	case slot < 0 || slot >= MaxSlotNum:
+	case slot < 0 || int(slot) >= d.table[r.Database].MaxSlotMum:
 		r.Resp = redis.NewErrorf("ERR parse slotnum '%s' failed, out of range", r.Multi[1].Value)
 		return nil
 	default:
@@ -588,6 +599,10 @@ func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 
 func (s *Session) handleRequestSlotsMapping(r *Request, d *Router) error {
 	var nblks = len(r.Multi) - 1
+	if _, ok := d.table[r.Database]; !ok {
+		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist")
+		return nil
+	}
 	switch {
 	case nblks >= 2:
 		r.Resp = redis.NewErrorf("ERR wrong number of arguments for 'SLOTSMAPPING' command")
@@ -613,7 +628,7 @@ func (s *Session) handleRequestSlotsMapping(r *Request, d *Router) error {
 		})
 	}
 	if nblks == 0 {
-		var array = make([]*redis.Resp, MaxSlotNum)
+		var array = make([]*redis.Resp, d.table[r.Database].MaxSlotMum)
 		for i, m := range d.GetSlots() {
 			array[i] = marshalToResp(m)
 		}
@@ -624,11 +639,11 @@ func (s *Session) handleRequestSlotsMapping(r *Request, d *Router) error {
 	case err != nil:
 		r.Resp = redis.NewErrorf("ERR parse slotnum '%s' failed, %s", r.Multi[1].Value, err)
 		return nil
-	case slot < 0 || slot >= MaxSlotNum:
+	case slot < 0 || int(slot) >= d.table[r.Database].MaxSlotMum:
 		r.Resp = redis.NewErrorf("ERR parse slotnum '%s' failed, out of range", r.Multi[1].Value)
 		return nil
 	default:
-		r.Resp = marshalToResp(d.GetSlot(int(slot)))
+		r.Resp = marshalToResp(d.GetSlot(r.Database, int(slot)))
 		return nil
 	}
 }

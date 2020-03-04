@@ -74,6 +74,7 @@ func newApiServer(t *Topom) http.Handler {
 		r.Get("/xping/:xauth", api.XPing)
 		r.Get("/stats/:xauth", api.Stats)
 		r.Get("/slots/:xauth", api.Slots)
+		r.Get("/tableslots/:xauth", api.TableSlots)
 		r.Put("/reload/:xauth", api.Reload)
 		r.Put("/shutdown/:xauth", api.Shutdown)
 		r.Put("/loglevel/:xauth/:value", api.LogLevel)
@@ -100,18 +101,25 @@ func newApiServer(t *Topom) http.Handler {
 			})
 			r.Get("/info/:addr", api.InfoServer)
 		})
+		r.Group("/table", func(r martini.Router) {
+			r.Put("/create/:xauth/:name/:num", api.CreateTable)
+			r.Put("/remove/:xauth/:tid", api.RemoveTable)
+			r.Get("/list/:xauth/:tid", api.ListTable)
+			r.Get("/get/:xauth/:tid", api.GetTable)
+
+		})
 		r.Group("/slots", func(r martini.Router) {
 			r.Group("/action", func(r martini.Router) {
-				r.Put("/create/:xauth/:sid/:gid", api.SlotCreateAction)
-				r.Put("/create-some/:xauth/:src/:dst/:num", api.SlotCreateActionSome)
-				r.Put("/create-range/:xauth/:beg/:end/:gid", api.SlotCreateActionRange)
-				r.Put("/remove/:xauth/:sid", api.SlotRemoveAction)
+				r.Put("/create/:xauth/:tid/:sid/:gid", api.SlotCreateAction)
+				r.Put("/create-some/:xauth/:tid/:src/:dst/:num", api.SlotCreateActionSome)
+				r.Put("/create-range/:xauth/:tid/:beg/:end/:gid", api.SlotCreateActionRange)
+				r.Put("/remove/:xauth/:tid/:sid", api.SlotRemoveAction)
 				r.Put("/interval/:xauth/:value", api.SetSlotActionInterval)
 				r.Put("/disabled/:xauth/:value", api.SetSlotActionDisabled)
 			})
-			r.Put("/assign/:xauth", binding.Json([]*models.SlotMapping{}), api.SlotsAssignGroup)
-			r.Put("/assign/:xauth/offline", binding.Json([]*models.SlotMapping{}), api.SlotsAssignOffline)
-			r.Put("/rebalance/:xauth/:confirm", api.SlotsRebalance)
+			r.Put("/assign/:xauth/:tid", binding.Json([]*models.SlotMapping{}), api.SlotsAssignGroup)
+			r.Put("/assign/:xauth/:tid/offline", binding.Json([]*models.SlotMapping{}), api.SlotsAssignOffline)
+			r.Put("/rebalance/:xauth/:tid/:confirm", api.SlotsRebalance)
 		})
 		r.Group("/sentinels", func(r martini.Router) {
 			r.Put("/add/:xauth/:addr", api.AddSentinel)
@@ -194,6 +202,17 @@ func (s *apiServer) Slots(params martini.Params) (int, string) {
 	}
 }
 
+func (s *apiServer) TableSlots(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if slots, err := s.topom.Slots(); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(slots)
+	}
+}
+
 func (s *apiServer) Reload(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
@@ -219,6 +238,14 @@ func (s *apiServer) parseToken(params martini.Params) (string, error) {
 		return "", errors.New("missing token")
 	}
 	return token, nil
+}
+
+func (s *apiServer) parseString(params martini.Params, entry string) (string, error) {
+	text := params[entry]
+	if text == "" {
+		return "", fmt.Errorf("missing %s", entry)
+	}
+	return text, nil
 }
 
 func (s *apiServer) parseInteger(params martini.Params, entry string) (int, error) {
@@ -459,6 +486,66 @@ func (s *apiServer) EnableReplicaGroupsAll(params martini.Params) (int, string) 
 	}
 }
 
+func (s *apiServer) CreateTable(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	name, err := s.parseString(params, "name")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	num, err := s.parseInteger(params, "num")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if  err := s.topom.CreateTable(name, num); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson("OK")
+	}
+}
+
+func (s *apiServer) RemoveTable(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if err := s.topom.RemoveTable(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson("OK")
+	}
+}
+
+func (s *apiServer) ListTable(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if tables, err := s.topom.ListTable(); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(tables)
+	}
+}
+
+func (s *apiServer) GetTable(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if t, err := s.topom.GetTable(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(t)
+	}
+}
+
 func (s *apiServer) AddSentinel(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
@@ -587,6 +674,10 @@ func (s *apiServer) SlotCreateAction(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
 	sid, err := s.parseInteger(params, "sid")
 	if err != nil {
 		return rpc.ApiResponseError(err)
@@ -595,7 +686,7 @@ func (s *apiServer) SlotCreateAction(params martini.Params) (int, string) {
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if err := s.topom.SlotCreateAction(sid, gid); err != nil {
+	if err := s.topom.SlotCreateAction(tid, sid, gid); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
@@ -604,6 +695,10 @@ func (s *apiServer) SlotCreateAction(params martini.Params) (int, string) {
 
 func (s *apiServer) SlotCreateActionSome(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
 	groupFrom, err := s.parseInteger(params, "src")
@@ -618,7 +713,7 @@ func (s *apiServer) SlotCreateActionSome(params martini.Params) (int, string) {
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if err := s.topom.SlotCreateActionSome(groupFrom, groupTo, numSlots); err != nil {
+	if err := s.topom.SlotCreateActionSome(tid, groupFrom, groupTo, numSlots); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
@@ -627,6 +722,10 @@ func (s *apiServer) SlotCreateActionSome(params martini.Params) (int, string) {
 
 func (s *apiServer) SlotCreateActionRange(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
 	beg, err := s.parseInteger(params, "beg")
@@ -641,7 +740,7 @@ func (s *apiServer) SlotCreateActionRange(params martini.Params) (int, string) {
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if err := s.topom.SlotCreateActionRange(beg, end, gid, true); err != nil {
+	if err := s.topom.SlotCreateActionRange(tid, beg, end, gid, true); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
@@ -652,11 +751,15 @@ func (s *apiServer) SlotRemoveAction(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
 	sid, err := s.parseInteger(params, "sid")
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if err := s.topom.SlotRemoveAction(sid); err != nil {
+	if err := s.topom.SlotRemoveAction(tid, sid); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
@@ -720,7 +823,11 @@ func (s *apiServer) SlotsAssignGroup(slots []*models.SlotMapping, params martini
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if err := s.topom.SlotsAssignGroup(slots); err != nil {
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if err := s.topom.SlotsAssignGroup(tid, slots); err != nil {
 		return rpc.ApiResponseError(err)
 	}
 	return rpc.ApiResponseJson("OK")
@@ -730,7 +837,11 @@ func (s *apiServer) SlotsAssignOffline(slots []*models.SlotMapping, params marti
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if err := s.topom.SlotsAssignOffline(slots); err != nil {
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if err := s.topom.SlotsAssignOffline(tid, slots); err != nil {
 		return rpc.ApiResponseError(err)
 	}
 	return rpc.ApiResponseJson("OK")
@@ -740,11 +851,15 @@ func (s *apiServer) SlotsRebalance(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
 	confirm, err := s.parseInteger(params, "confirm")
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if plans, err := s.topom.SlotsRebalance(confirm != 0); err != nil {
+	if plans, err := s.topom.SlotsRebalance(tid, confirm != 0); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		m := make(map[string]int)
@@ -910,6 +1025,16 @@ func (c *ApiClient) EnableReplicaGroupsAll(value bool) error {
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
+func (c *ApiClient) CreateTable(name string, num int)  error {
+	url := c.encodeURL("/api/topom/table/create/%s/%s/%d", c.xauth, name, num)
+	return  rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) RemoveTable(tid int)  error {
+	url := c.encodeURL("/api/topom/table/remove/%s/%d", c.xauth, tid)
+	return  rpc.ApiPutJson(url, nil, nil)
+}
+
 func (c *ApiClient) AddSentinel(addr string) error {
 	url := c.encodeURL("/api/topom/sentinels/add/%s/%s", c.xauth, addr)
 	return rpc.ApiPutJson(url, nil, nil)
@@ -973,13 +1098,13 @@ func (c *ApiClient) SetSlotActionDisabled(disabled bool) error {
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) SlotsAssignGroup(slots []*models.SlotMapping) error {
-	url := c.encodeURL("/api/topom/slots/assign/%s", c.xauth)
+func (c *ApiClient) SlotsAssignGroup(tid int, slots []*models.SlotMapping) error {
+	url := c.encodeURL("/api/topom/slots/assign/%s/%s", c.xauth, tid)
 	return rpc.ApiPutJson(url, slots, nil)
 }
 
-func (c *ApiClient) SlotsAssignOffline(slots []*models.SlotMapping) error {
-	url := c.encodeURL("/api/topom/slots/assign/%s/offline", c.xauth)
+func (c *ApiClient) SlotsAssignOffline(tid int, slots []*models.SlotMapping) error {
+	url := c.encodeURL("/api/topom/slots/assign/%s/%s/offline", c.xauth, tid)
 	return rpc.ApiPutJson(url, slots, nil)
 }
 

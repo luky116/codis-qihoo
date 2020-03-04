@@ -125,7 +125,11 @@ func (s *Topom) newProxyClient(p *models.Proxy) *proxy.ApiClient {
 
 func (s *Topom) reinitProxy(ctx *context, p *models.Proxy, c *proxy.ApiClient) error {
 	log.Warnf("proxy-[%s] reinit:\n%s", p.Token, p.Encode())
-	if err := c.FillSlots(ctx.toSlotSlice(ctx.slots, p)...); err != nil {
+	if err := c.FillTables(ctx.toTableSlice(ctx.table)...); err != nil {
+		log.ErrorErrorf(err, "proxy-[%s] set tables failed", p.Token)
+		return errors.Errorf("proxy-[%s] set table failed", p.Token)
+	}
+	if err := c.FillSlots(ctx.toAllSlotSlice(ctx.slots, p)...); err != nil {
 		log.ErrorErrorf(err, "proxy-[%s] fillslots failed", p.Token)
 		return errors.Errorf("proxy-[%s] fillslots failed", p.Token)
 	}

@@ -18,9 +18,10 @@ import (
 const MaxSlotNum = models.MaxSlotNum
 
 type context struct {
-	slots []*models.SlotMapping
+	slots map[int][]*models.SlotMapping
 	group map[int]*models.Group
 	proxy map[string]*models.Proxy
+	table map[int]*models.Table
 
 	sentinel *models.Sentinel
 
@@ -31,28 +32,31 @@ type context struct {
 	method int
 }
 
-func (ctx *context) getSlotMapping(sid int) (*models.SlotMapping, error) {
-	if len(ctx.slots) != MaxSlotNum {
-		return nil, errors.Errorf("invalid number of slots = %d/%d", len(ctx.slots), MaxSlotNum)
+func (ctx *context) getSlotMapping(tid int, sid int) (*models.SlotMapping, error) {
+	if len(ctx.slots) != ctx.table[tid].MaxSlotMum {
+		return nil, errors.Errorf("invalid table-[%d] number of slots = %d/%d",tid, len(ctx.slots[tid]), ctx.table[tid].MaxSlotMum)
 	}
-	if sid >= 0 && sid < MaxSlotNum {
-		return ctx.slots[sid], nil
+	if sid >= 0 && sid < ctx.table[tid].MaxSlotMum {
+		return ctx.slots[tid][sid], nil
 	}
-	return nil, errors.Errorf("slot-[%d] doesn't exist", sid)
+	return nil, errors.Errorf("table-[%d] slot-[%d] doesn't exist", tid, sid)
 }
 
 func (ctx *context) getSlotMappingsByGroupId(gid int) []*models.SlotMapping {
 	var slots = []*models.SlotMapping{}
-	for _, m := range ctx.slots {
-		if m.GroupId == gid || m.Action.TargetId == gid {
-			slots = append(slots, m)
+	for _, s := range ctx.slots {
+		for _, m := range s {
+			if m.GroupId == gid || m.Action.TargetId == gid {
+				slots = append(slots, m)
+			}
 		}
+
 	}
 	return slots
 }
 
-func (ctx *context) maxSlotActionIndex() (maxIndex int) {
-	for _, m := range ctx.slots {
+func (ctx *context) maxSlotActionIndex(tid int) (maxIndex int) {
+	for _, m := range ctx.slots[tid] {
 		if m.Action.State != models.ActionNothing {
 			maxIndex = math2.MaxInt(maxIndex, m.Action.Index)
 		}
@@ -81,6 +85,7 @@ func (ctx *context) isSlotLocked(m *models.SlotMapping) bool {
 func (ctx *context) toSlot(m *models.SlotMapping, p *models.Proxy) *models.Slot {
 	slot := &models.Slot{
 		Id:     m.Id,
+		TableId: m.TableId,
 		Locked: ctx.isSlotLocked(m),
 
 		ForwardMethod: ctx.method,
@@ -175,6 +180,33 @@ func (ctx *context) toSlotSlice(slots []*models.SlotMapping, p *models.Proxy) []
 	return slice
 }
 
+func (ctx *context) toAllSlotSlice(slots map[int][]*models.SlotMapping, p *models.Proxy) []*models.Slot {
+	var length = 0
+	for _, s := range slots {
+		length += len(s)
+	}
+	var slice = make([]*models.Slot, length)
+	for _, m := range slots {
+		slice = append(slice, ctx.toSlotSlice(m, p)...)
+	}
+	return slice
+}
+
+func (ctx *context) toTableSlice(tables map[int]*models.Table) []*models.Table {
+	var slice = make([]*models.Table, len(tables))
+	for _, t := range tables {
+		slice = append(slice, t)
+	}
+	return slice
+}
+
+func (ctx *context) getTable(tid int) (*models.Table, error) {
+	if t := ctx.table[tid]; t != nil {
+		return t, nil
+	}
+	return nil, errors.Errorf("table-[%d] doesn't exist", tid)
+}
+
 func (ctx *context) getGroup(gid int) (*models.Group, error) {
 	if g := ctx.group[gid]; g != nil {
 		return g, nil
@@ -256,9 +288,11 @@ func (ctx *context) getGroupIds() map[int]bool {
 }
 
 func (ctx *context) isGroupInUse(gid int) bool {
-	for _, m := range ctx.slots {
-		if m.GroupId == gid || m.Action.TargetId == gid {
-			return true
+	for _, s := range ctx.slots {
+		for _, m := range s {
+			if m.GroupId == gid || m.Action.TargetId == gid {
+				return true
+			}
 		}
 	}
 	return false

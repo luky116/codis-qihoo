@@ -5,6 +5,7 @@ package topom
 
 import (
 	"container/list"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -33,9 +34,10 @@ type Topom struct {
 	store *models.Store
 	cache struct {
 		hooks list.List
-		slots []*models.SlotMapping
+		slots map[int][]*models.SlotMapping
 		group map[int]*models.Group
 		proxy map[string]*models.Proxy
+		table map[int]*models.Table
 
 		sentinel *models.Sentinel
 	}
@@ -271,6 +273,7 @@ func (s *Topom) newContext() (*context, error) {
 			return nil, err
 		} else {
 			ctx := &context{}
+			ctx.table = s.cache.table
 			ctx.slots = s.cache.slots
 			ctx.group = s.cache.group
 			ctx.proxy = s.cache.proxy
@@ -334,7 +337,8 @@ func (s *Topom) Stats() (*Stats, error) {
 type Stats struct {
 	Closed bool `json:"closed"`
 
-	Slots []*models.SlotMapping `json:"slots"`
+	Table map[int]*models.Table `json:"table"`
+	Slots map[int][]*models.SlotMapping `json:"slots"`
 
 	Group struct {
 		Models []*models.Group        `json:"models"`
@@ -406,7 +410,31 @@ func (s *Topom) Slots() ([]*models.Slot, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ctx.toSlotSlice(ctx.slots, nil), nil
+	return ctx.toAllSlotSlice(ctx.slots, nil), nil
+}
+
+func (s *Topom) TableSlots(tid int) ([]*models.Slot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ctx, err := s.newContext()
+	if err != nil {
+		return nil, err
+	}
+	if _ , ok := ctx.slots[tid]; ok {
+		return ctx.toSlotSlice(ctx.slots[tid], nil), nil
+	} else {
+		return nil, fmt.Errorf("table-[%s] not exist", tid)
+	}
+}
+
+func (s *Topom) tables() (map[int]*models.Table, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ctx, err := s.newContext()
+	if err != nil {
+		return nil, err
+	}
+	return ctx.table, nil
 }
 
 func (s *Topom) Reload() error {

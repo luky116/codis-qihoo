@@ -260,6 +260,19 @@ func (s *Proxy) FillSlots(slots []*models.Slot) error {
 	return nil
 }
 
+func (s *Proxy) FillTables(tables []*models.Table) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return ErrClosedProxy
+	}
+	s.router.DelTables()
+	for _, t := range tables {
+		s.router.FillTable(t)
+	}
+	return nil
+}
+
 func (s *Proxy) SwitchMasters(masters map[int]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

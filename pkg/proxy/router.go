@@ -13,7 +13,7 @@ import (
 	"github.com/CodisLabs/codis/pkg/utils/redis"
 )
 
-const MaxSlotNum = models.MaxSlotNum
+//const MaxSlotNum = models.MaxSlotNum
 
 type Router struct {
 	mu sync.RWMutex
@@ -22,7 +22,8 @@ type Router struct {
 		primary *sharedBackendConnPool
 		replica *sharedBackendConnPool
 	}
-	slots [MaxSlotNum]Slot
+	slots map[int][]Slot
+	table map[int]*models.Table
 
 	config *Config
 	online bool
@@ -33,10 +34,10 @@ func NewRouter(config *Config) *Router {
 	s := &Router{config: config}
 	s.pool.primary = newSharedBackendConnPool(config, config.BackendPrimaryParallel)
 	s.pool.replica = newSharedBackendConnPool(config, config.BackendReplicaParallel)
-	for i := range s.slots {
-		s.slots[i].id = i
-		s.slots[i].method = &forwardSync{}
-	}
+//	for i := range s.slots {
+//		s.slots[i].id = i
+//		s.slots[i].method = &forwardSync{}
+//	}
 	return s
 }
 
@@ -65,29 +66,37 @@ func (s *Router) Close() {
 func (s *Router) GetSlots() []*models.Slot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	slots := make([]*models.Slot, MaxSlotNum)
+	var length = 0
+	for _, s := range s.slots {
+		length += len(s)
+	}
+	slots := make([]*models.Slot, length)
 	for i := range s.slots {
-		slots[i] = s.slots[i].snapshot()
+		for j := range s.slots[i] {
+			slots = append(slots, s.slots[i][j].snapshot())
+		}
 	}
 	return slots
 }
 
-func (s *Router) GetSlot(id int) *models.Slot {
+func (s *Router) GetSlot(tid, sid int) *models.Slot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if id < 0 || id >= MaxSlotNum {
+	if sid < 0 || sid >= s.table[tid].MaxSlotMum {
 		return nil
 	}
-	slot := &s.slots[id]
+	slot := &s.slots[tid][sid]
 	return slot.snapshot()
 }
 
 func (s *Router) HasSwitched() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	for i := range s.slots {
-		if s.slots[i].switched {
-			return true
+	for _, i := range s.slots {
+		for _, j := range i {
+			if j.switched {
+				return true
+			}
 		}
 	}
 	return false
@@ -96,8 +105,24 @@ func (s *Router) HasSwitched() bool {
 var (
 	ErrClosedRouter  = errors.New("use of closed router")
 	ErrInvalidSlotId = errors.New("use of invalid slot id")
+	ErrInvalidTableId = errors.New("use of invalid table id")
 	ErrInvalidMethod = errors.New("use of invalid forwarder method")
 )
+
+
+func (s *Router) DelTables() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i, _ := range s.table {
+		delete(s.table, i)
+	}
+}
+
+func (s *Router) FillTable(t *models.Table) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	s.table[t.Id] = t
+}
 
 func (s *Router) FillSlot(m *models.Slot) error {
 	s.mu.Lock()
@@ -105,7 +130,7 @@ func (s *Router) FillSlot(m *models.Slot) error {
 	if s.closed {
 		return ErrClosedRouter
 	}
-	if m.Id < 0 || m.Id >= MaxSlotNum {
+	if m.Id < 0 || m.Id >= s.table[m.TableId].MaxSlotMum {
 		return ErrInvalidSlotId
 	}
 	var method forwardMethod
@@ -138,16 +163,16 @@ func (s *Router) isOnline() bool {
 
 func (s *Router) dispatch(r *Request) error {
 	hkey := getHashKey(r.Multi, r.OpStr)
-	var id = Hash(hkey) % MaxSlotNum
-	slot := &s.slots[id]
+	var id = Hash(hkey) % uint32(s.table[r.Database].MaxSlotMum)
+	slot := &s.slots[r.Database][id]
 	return slot.forward(r, hkey)
 }
 
 func (s *Router) dispatchSlot(r *Request, id int) error {
-	if id < 0 || id >= MaxSlotNum {
+	if id < 0 || id >= s.table[r.Database].MaxSlotMum {
 		return ErrInvalidSlotId
 	}
-	slot := &s.slots[id]
+	slot := &s.slots[r.Database][id]
 	return slot.forward(r, nil)
 }
 
@@ -166,7 +191,7 @@ func (s *Router) dispatchAddr(r *Request, addr string) bool {
 }
 
 func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
-	slot := &s.slots[m.Id]
+	slot := &s.slots[m.TableId][m.Id]
 	slot.blockAndWait()
 
 	slot.backend.bc.Release()
@@ -185,18 +210,18 @@ func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 	slot.switched = switched
 
 	if addr := m.BackendAddr; len(addr) != 0 {
-		slot.backend.bc = s.pool.primary.Retain(addr)
+		slot.backend.bc = s.pool.primary.Retain(s.table,  addr)
 		slot.backend.id = m.BackendAddrGroupId
 	}
 	if from := m.MigrateFrom; len(from) != 0 {
-		slot.migrate.bc = s.pool.primary.Retain(from)
+		slot.migrate.bc = s.pool.primary.Retain(s.table, from)
 		slot.migrate.id = m.MigrateFromGroupId
 	}
 	if !s.config.BackendPrimaryOnly {
 		for i := range m.ReplicaGroups {
 			var group []*sharedBackendConn
 			for _, addr := range m.ReplicaGroups[i] {
-				group = append(group, s.pool.replica.Retain(addr))
+				group = append(group, s.pool.replica.Retain(s.table, addr))
 			}
 			if len(group) == 0 {
 				continue
@@ -242,14 +267,16 @@ func (s *Router) SwitchMasters(masters map[int]string) error {
 		Auth: s.config.ProductAuth, Timeout: time.Millisecond * 100,
 	}
 	for i := range s.slots {
-		s.trySwitchMaster(i, masters, cache)
+		for j := range(s.slots[i])  {
+			s.trySwitchMaster(i, j, masters, cache)
+		}
 	}
 	return nil
 }
 
-func (s *Router) trySwitchMaster(id int, masters map[int]string, cache *redis.InfoCache) {
+func (s *Router) trySwitchMaster(tid, sid int, masters map[int]string, cache *redis.InfoCache) {
 	var switched bool
-	var m = s.slots[id].snapshot()
+	var m = s.slots[tid][sid].snapshot()
 
 	hasSameRunId := func(addr1, addr2 string) bool {
 		if addr1 != addr2 {

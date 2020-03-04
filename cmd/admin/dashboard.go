@@ -68,6 +68,14 @@ func (t *cmdDashboard) Main(d map[string]interface{}) {
 	case d["--promote-server"].(bool):
 		t.handleGroupCommand(d)
 
+
+	case d["--create-table"].(bool):
+		fallthrough
+	case d["--remove-table"].(bool):
+		fallthrough
+	case d["--list-table"].(bool):
+		t.handleTableCommand(d)
+
 	case d["--sentinel-add"].(bool):
 		fallthrough
 	case d["--sentinel-del"].(bool):
@@ -225,6 +233,7 @@ func (t *cmdDashboard) handleSlotsCommand(d map[string]interface{}) {
 
 		beg := utils.ArgumentIntegerMust(d, "--beg")
 		end := utils.ArgumentIntegerMust(d, "--end")
+		tid := utils.ArgumentIntegerMust(d, "--tid")
 
 		slots := []*models.SlotMapping{}
 		for i := beg; i <= end; i++ {
@@ -243,7 +252,7 @@ func (t *cmdDashboard) handleSlotsCommand(d map[string]interface{}) {
 		}
 
 		log.Debugf("call rpc slots-assign to dashboard %s", t.addr)
-		if err := c.SlotsAssignOffline(slots); err != nil {
+		if err := c.SlotsAssignOffline(tid, slots); err != nil {
 			log.PanicErrorf(err, "call rpc slots-assign to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc slots-assign OK")
@@ -253,6 +262,7 @@ func (t *cmdDashboard) handleSlotsCommand(d map[string]interface{}) {
 		beg := utils.ArgumentIntegerMust(d, "--beg")
 		end := utils.ArgumentIntegerMust(d, "--end")
 		gid := utils.ArgumentIntegerMust(d, "--gid")
+		tid := utils.ArgumentIntegerMust(d, "--tid")
 
 		slots := []*models.SlotMapping{}
 		for i := beg; i <= end; i++ {
@@ -271,7 +281,7 @@ func (t *cmdDashboard) handleSlotsCommand(d map[string]interface{}) {
 		}
 
 		log.Debugf("call rpc slots-assign to dashboard %s", t.addr)
-		if err := c.SlotsAssignGroup(slots); err != nil {
+		if err := c.SlotsAssignGroup(tid, slots); err != nil {
 			log.PanicErrorf(err, "call rpc slots-assign to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc slots-assign OK")
@@ -629,6 +639,45 @@ func (t *cmdDashboard) handleGroupCommand(d map[string]interface{}) {
 				fmt.Println()
 			}
 		}
+	}
+}
+
+func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
+	c := t.newTopomClient()
+
+	switch {
+	case d["--create-table"].(bool):
+
+		name := utils.ArgumentMust(d, "--name")
+		num := utils.ArgumentIntegerMust(d, "--num")
+		log.Debugf("call rpc create-table to dashboard %s", t.addr)
+		if  err := c.CreateTable(name, num); err != nil {
+			log.PanicErrorf(err, "call rpc create-Table to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc create-group OK")
+	case d["--remove-table"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+
+		log.Debugf("call rpc remove-table to dashboard %s", t.addr)
+		if err := c.RemoveTable(tid); err != nil {
+			log.PanicErrorf(err, "call rpc remove-table to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc remove-table OK")
+	case d["--list-table"].(bool):
+
+		log.Debugf("call rpc list-table to dashboard %s", t.addr)
+
+		s, err := c.Stats()
+		if err != nil {
+			log.PanicErrorf(err, "call rpc table-list to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc table-list OK")
+
+		for _, t := range s.Table {
+			fmt.Printf("table ID: %d, table name: %s, slots num: %d", t.Id, t.Name, t.MaxSlotMum)
+		}
+		fmt.Println()
 	}
 }
 

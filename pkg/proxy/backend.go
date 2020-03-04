@@ -6,6 +6,7 @@ package proxy
 import (
 	"bytes"
 	"fmt"
+	"github.com/CodisLabs/codis/pkg/models"
 	"net"
 	"strconv"
 	"strings"
@@ -373,14 +374,14 @@ type sharedBackendConn struct {
 	port []byte
 
 	owner *sharedBackendConnPool
-	conns [][]*BackendConn
+	conns map[int][]*BackendConn
 
-	single []*BackendConn
+	single map[int]*BackendConn
 
 	refcnt int
 }
 
-func newSharedBackendConn(addr string, pool *sharedBackendConnPool) *sharedBackendConn {
+func newSharedBackendConn(t map[int]*models.Table, addr string, pool *sharedBackendConnPool) *sharedBackendConn {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		log.ErrorErrorf(err, "split host-port failed, address = %s", addr)
@@ -390,8 +391,9 @@ func newSharedBackendConn(addr string, pool *sharedBackendConnPool) *sharedBacke
 		host: []byte(host), port: []byte(port),
 	}
 	s.owner = pool
-	s.conns = make([][]*BackendConn, pool.config.BackendNumberDatabases)
-	for database := range s.conns {
+	s.conns = make(map[int][]*BackendConn)
+
+	for database := range t {
 		parallel := make([]*BackendConn, pool.parallel)
 		for i := range parallel {
 			parallel[i] = NewBackendConn(addr, database, pool.config)
@@ -399,7 +401,7 @@ func newSharedBackendConn(addr string, pool *sharedBackendConnPool) *sharedBacke
 		s.conns[database] = parallel
 	}
 	if pool.parallel == 1 {
-		s.single = make([]*BackendConn, len(s.conns))
+		s.single = make(map[int]*BackendConn)
 		for database := range s.conns {
 			s.single[database] = s.conns[database][0]
 		}
@@ -458,7 +460,7 @@ func (s *sharedBackendConn) KeepAlive() {
 	}
 }
 
-func (s *sharedBackendConn) BackendConn(database int32, seed uint, must bool) *BackendConn {
+func (s *sharedBackendConn) BackendConn(database int, seed uint, must bool) *BackendConn {
 	if s == nil {
 		return nil
 	}
@@ -511,11 +513,11 @@ func (p *sharedBackendConnPool) Get(addr string) *sharedBackendConn {
 	return p.pool[addr]
 }
 
-func (p *sharedBackendConnPool) Retain(addr string) *sharedBackendConn {
+func (p *sharedBackendConnPool) Retain(t map[int]*models.Table, addr string) *sharedBackendConn {
 	if bc := p.pool[addr]; bc != nil {
 		return bc.Retain()
 	} else {
-		bc = newSharedBackendConn(addr, p)
+		bc = newSharedBackendConn(t, addr, p)
 		p.pool[addr] = bc
 		return bc
 	}

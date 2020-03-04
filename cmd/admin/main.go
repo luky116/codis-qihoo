@@ -23,7 +23,7 @@ Usage:
 	codis-admin [-v] --dashboard=ADDR            --shutdown
 	codis-admin [-v] --dashboard=ADDR            --reload
 	codis-admin [-v] --dashboard=ADDR            --log-level=LEVEL
-	codis-admin [-v] --dashboard=ADDR            --slots-assign   --beg=ID --end=ID (--gid=ID|--offline) [--confirm]
+	codis-admin [-v] --dashboard=ADDR            --slots-assign   --beg=ID --end=ID (--gid=ID|--offline) --tid=ID [--confirm]
 	codis-admin [-v] --dashboard=ADDR            --slots-status
 	codis-admin [-v] --dashboard=ADDR            --list-proxy
 	codis-admin [-v] --dashboard=ADDR            --create-proxy   --addr=ADDR
@@ -31,6 +31,9 @@ Usage:
 	codis-admin [-v] --dashboard=ADDR            --remove-proxy  (--addr=ADDR|--token=TOKEN|--pid=ID)       [--force]
 	codis-admin [-v] --dashboard=ADDR            --reinit-proxy  (--addr=ADDR|--token=TOKEN|--pid=ID|--all) [--force]
 	codis-admin [-v] --dashboard=ADDR            --proxy-status
+	codis-admin [-v] --dashboard=ADDR            --create-table   --name=table-name --num=slots-num
+	codis-admin [-v] --dashboard=ADDR            --list-table   
+	codis-admin [-v] --dashboard=ADDR            --remove-table   
 	codis-admin [-v] --dashboard=ADDR            --list-group
 	codis-admin [-v] --dashboard=ADDR            --create-group   --gid=ID
 	codis-admin [-v] --dashboard=ADDR            --remove-group   --gid=ID

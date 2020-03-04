@@ -9,10 +9,12 @@ import (
 	"github.com/CodisLabs/codis/pkg/utils/log"
 )
 
-func (s *Topom) dirtySlotsCache(sid int) {
+func (s *Topom) dirtySlotsCache(tid int, sid int) {
 	s.cache.hooks.PushBack(func() {
 		if s.cache.slots != nil {
-			s.cache.slots[sid] = nil
+			if s.cache.slots[tid] != nil {
+				s.cache.slots[tid][sid] = nil
+			}
 		}
 	})
 }
@@ -21,6 +23,17 @@ func (s *Topom) dirtyGroupCache(gid int) {
 	s.cache.hooks.PushBack(func() {
 		if s.cache.group != nil {
 			s.cache.group[gid] = nil
+		}
+	})
+}
+
+func (s *Topom) dirtyTableCache(tid int) {
+	s.cache.hooks.PushBack(func() {
+		if s.cache.table != nil {
+			s.cache.table[tid] = nil
+		}
+		if s.cache.slots != nil {
+			s.cache.slots[tid] = nil
 		}
 	})
 }
@@ -53,7 +66,13 @@ func (s *Topom) refillCache() error {
 		e := s.cache.hooks.Front()
 		s.cache.hooks.Remove(e).(func())()
 	}
-	if slots, err := s.refillCacheSlots(s.cache.slots); err != nil {
+	if table,err :=s.refillCacheTable(s.cache.table); err !=nil {
+		log.ErrorErrorf(err, "store: load table failed")
+		return errors.Errorf("store: load table failed")
+	} else {
+		s.cache.table = table
+	}
+	if slots, err := s.refillCacheSlots(s.cache.slots, s.cache.table); err != nil {
 		log.ErrorErrorf(err, "store: load slots failed")
 		return errors.Errorf("store: load slots failed")
 	} else {
@@ -80,25 +99,56 @@ func (s *Topom) refillCache() error {
 	return nil
 }
 
-func (s *Topom) refillCacheSlots(slots []*models.SlotMapping) ([]*models.SlotMapping, error) {
+func (s *Topom) refillCacheSlots(slots map[int][]*models.SlotMapping, table map[int]*models.Table) (map[int][]*models.SlotMapping, error) {
 	if slots == nil {
-		return s.store.SlotMappings()
+		slots := make(map[int][]*models.SlotMapping)
+		var err error
+		for i, _ :=range table  {
+			if slots[i], err = s.store.SlotMappings(i); err != nil {
+				return nil, err
+			}
+		}
+		return slots, nil
 	}
-	for i, _ := range slots {
-		if slots[i] != nil {
+	for i, _ :=range table {
+		for j, _ := range slots {
+			if slots[i][j] != nil {
+				continue
+			}
+			m, err := s.store.LoadSlotMapping(i, j, false)
+			if err != nil {
+				return nil, err
+			}
+			if m != nil {
+				slots[i][j] = m
+			} else {
+				slots[i][j] = &models.SlotMapping{Id: j}
+			}
+		}
+
+	}
+	return slots, nil
+}
+
+func (s *Topom) refillCacheTable(table map[int]*models.Table) (map[int]*models.Table, error) {
+	if table == nil {
+		return s.store.ListTable()
+	}
+	for i, _ := range table {
+		if table[i] != nil {
 			continue
 		}
-		m, err := s.store.LoadSlotMapping(i, false)
+		t, err := s.store.LoadTable(i, false)
 		if err != nil {
 			return nil, err
 		}
-		if m != nil {
-			slots[i] = m
+		if t != nil {
+			table[i] = t
 		} else {
-			slots[i] = &models.SlotMapping{Id: i}
+			delete(table, i)
 		}
 	}
-	return slots, nil
+	return table, nil
 }
 
 func (s *Topom) refillCacheGroup(group map[int]*models.Group) (map[int]*models.Group, error) {
@@ -157,11 +207,11 @@ func (s *Topom) refillCacheSentinel(sentinel *models.Sentinel) (*models.Sentinel
 	return &models.Sentinel{}, nil
 }
 
-func (s *Topom) storeUpdateSlotMapping(m *models.SlotMapping) error {
-	log.Warnf("update slot-[%d]:\n%s", m.Id, m.Encode())
-	if err := s.store.UpdateSlotMapping(m); err != nil {
-		log.ErrorErrorf(err, "store: update slot-[%d] failed", m.Id)
-		return errors.Errorf("store: update slot-[%d] failed", m.Id)
+func (s *Topom) storeUpdateSlotMapping(tid int, m *models.SlotMapping) error {
+	log.Warnf("update table-[%d] slot-[%d]:\n%s", tid, m.Id, m.Encode())
+	if err := s.store.UpdateSlotMapping(tid, m); err != nil {
+		log.ErrorErrorf(err, "store: update table-[%d] slot-[%d] failed", tid, m.Id)
+		return errors.Errorf("store: update table-[%d] slot-[%d] failed", tid, m.Id)
 	}
 	return nil
 }
@@ -189,6 +239,34 @@ func (s *Topom) storeRemoveGroup(g *models.Group) error {
 	if err := s.store.DeleteGroup(g.Id); err != nil {
 		log.ErrorErrorf(err, "store: remove group-[%d] failed", g.Id)
 		return errors.Errorf("store: remove group-[%d] failed", g.Id)
+	}
+	return nil
+}
+
+func (s *Topom) storeCreateTable(t *models.Table) error {
+	log.Warnf("create table-[%d]:\n%s", t.Id, t.Encode())
+	if err := s.store.UpdateTable(t); err != nil {
+		log.ErrorErrorf(err, "store: create table-[%d] failed", t.Id)
+		return errors.Errorf("store: create table-[%d] failed", t.Id)
+	}
+	return nil
+}
+
+func (s *Topom) storeUpdateTable(t *models.Table) error {
+	log.Warnf("create table-[%d]:\n%s", t.Id, t.Encode())
+	if err := s.store.UpdateTable(t); err != nil {
+		log.ErrorErrorf(err, "store: create table-[%d] failed", t.Id)
+		return errors.Errorf("store: create table-[%d] failed", t.Id)
+	}
+	return nil
+}
+
+func (s *Topom) storeRemoveTable(t *models.Table) error {
+	//TODO delete slot
+	log.Warnf("remove table-[%d]:\n%s", t.Id, t.Encode())
+	if err := s.store.DeleteTable(t.Id); err != nil {
+		log.ErrorErrorf(err, "store: remove table-[%d] failed", t.Id)
+		return errors.Errorf("store: remove table-[%d] failed", t.Id)
 	}
 	return nil
 }

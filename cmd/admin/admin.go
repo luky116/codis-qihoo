@@ -166,7 +166,7 @@ func (t *cmdAdmin) dumpConfigV3(d map[string]interface{}) {
 		log.Panicf("cann't find product = %s [v3]", t.product)
 	}
 
-	slots, err := store.SlotMappings()
+	slots, err := store.AllSlotMappings()
 	if err != nil {
 		log.PanicErrorf(err, "list slots failed")
 	}
@@ -380,7 +380,7 @@ func (t *cmdAdmin) handleConfigRestore(d map[string]interface{}) {
 	}
 
 	for _, s := range config.Slots {
-		if err := store.UpdateSlotMapping(s); err != nil {
+		if err := store.UpdateSlotMapping(s.TableId, s); err != nil {
 			log.PanicErrorf(err, "restore slot-%04d failed", s.Id)
 		}
 	}

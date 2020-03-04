@@ -21,7 +21,7 @@ type Request struct {
 	OpStr string
 	OpFlag
 
-	Database int32
+	Database int
 	UnixNano int64
 
 	*redis.Resp
