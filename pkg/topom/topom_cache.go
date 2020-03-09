@@ -100,32 +100,43 @@ func (s *Topom) refillCache() error {
 }
 
 func (s *Topom) refillCacheSlots(slots map[int][]*models.SlotMapping, table map[int]*models.Table) (map[int][]*models.SlotMapping, error) {
+	var err error
 	if slots == nil {
 		slots := make(map[int][]*models.SlotMapping)
-		var err error
 		for i, _ :=range table  {
-			if slots[i], err = s.store.SlotMappings(i); err != nil {
-				return nil, err
+			if table[i] !=nil {
+				if slots[i], err = s.store.SlotMappings(i); err != nil {
+					return nil, err
+				}
 			}
 		}
 		return slots, nil
 	}
-	for i, _ :=range table {
-		for j, _ := range slots {
-			if slots[i][j] != nil {
-				continue
-			}
-			m, err := s.store.LoadSlotMapping(i, j, false)
-			if err != nil {
+	for i, _ :=range slots {
+		if slots[i] == nil {
+			slots[i], err = s.store.SlotMappings(i)
+			if err != nil  {
 				return nil, err
 			}
-			if m != nil {
-				slots[i][j] = m
-			} else {
-				slots[i][j] = &models.SlotMapping{Id: j}
+			if slots[i] == nil {
+				delete(slots, i)
+			}
+		} else {
+			for j, _ := range slots[i] {
+				if slots[i][j] != nil {
+					continue
+				}
+				m, err := s.store.LoadSlotMapping(i, j, false)
+				if err != nil {
+					return nil, err
+				}
+				if m != nil {
+					slots[i][j] = m
+				} else {
+					slots[i][j] = &models.SlotMapping{Id: j}
+				}
 			}
 		}
-
 	}
 	return slots, nil
 }
@@ -207,11 +218,29 @@ func (s *Topom) refillCacheSentinel(sentinel *models.Sentinel) (*models.Sentinel
 	return &models.Sentinel{}, nil
 }
 
+func (s *Topom) storeCreateSlotMapping(tid int, m *models.SlotMapping) error {
+	log.Warnf("create table-[%d] slot-[%d]:\n%s", tid, m.Id, m.Encode())
+	if err := s.store.UpdateSlotMapping(tid, m); err != nil {
+		log.ErrorErrorf(err, "store: create table-[%d] slot-[%d] failed", tid, m.Id)
+		return errors.Errorf("store: create table-[%d] slot-[%d] failed", tid, m.Id)
+	}
+	return nil
+}
+
 func (s *Topom) storeUpdateSlotMapping(tid int, m *models.SlotMapping) error {
 	log.Warnf("update table-[%d] slot-[%d]:\n%s", tid, m.Id, m.Encode())
 	if err := s.store.UpdateSlotMapping(tid, m); err != nil {
 		log.ErrorErrorf(err, "store: update table-[%d] slot-[%d] failed", tid, m.Id)
 		return errors.Errorf("store: update table-[%d] slot-[%d] failed", tid, m.Id)
+	}
+	return nil
+}
+
+func (s *Topom) storeRemoveSlotMapping(tid int, m *models.SlotMapping) error {
+	log.Warnf("remove table-[%d] slot-[%d]:\n%s", tid, m.Id, m.Encode())
+	if err := s.store.RemoveSlotMapping(tid, m); err != nil {
+		log.ErrorErrorf(err, "store: remove table-[%d] slot-[%d] failed", tid, m.Id)
+		return errors.Errorf("store: remove table-[%d] slot-[%d] failed", tid, m.Id)
 	}
 	return nil
 }

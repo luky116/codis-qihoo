@@ -299,6 +299,7 @@ func (s *Topom) Stats() (*Stats, error) {
 	stats.Closed = s.closed
 
 	stats.Slots = ctx.slots
+	stats.Table = ctx.table
 
 	stats.Group.Models = models.SortGroup(ctx.group)
 	stats.Group.Stats = map[string]*RedisStats{}

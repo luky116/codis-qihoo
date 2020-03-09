@@ -38,8 +38,12 @@ func TablePath(product string, tid int) string {
 	return filepath.Join(CodisDir, product, "table", fmt.Sprintf("table-%04d", tid), "meta")
 }
 
+func TableSlotDir(product string, tid int) string {
+	return filepath.Join(CodisDir, product, "table", fmt.Sprintf("table-%04d", tid))
+}
+
 func SlotPath(product string, tid int, sid int) string {
-	return filepath.Join(CodisDir, product, "table", fmt.Sprint("table-%04d", tid), "slots", fmt.Sprintf("slot-%04d", sid))
+	return filepath.Join(CodisDir, product, "table", fmt.Sprintf("table-%04d", tid), "slots", fmt.Sprintf("slot-%04d", sid))
 }
 
 func GroupDir(product string) string {
@@ -111,6 +115,10 @@ func (s *Store) TableDir() string {
 	return TableDir(s.product)
 }
 
+func (s *Store) TableSlotDir(tid int) string {
+	return TableSlotDir(s.product, tid)
+}
+
 func (s *Store) ProxyDir() string {
 	return ProxyDir(s.product)
 }
@@ -167,6 +175,9 @@ func (s *Store) SlotMappings(tid int) ([]*SlotMapping, error) {
 	if err != nil {
 		return nil, err
 	}
+	if t == nil {
+		return nil, nil
+	}
 	slots := make([]*SlotMapping, t.MaxSlotMum)
 	for i := range slots {
 		m, err := s.LoadSlotMapping(tid, i, false)
@@ -176,7 +187,7 @@ func (s *Store) SlotMappings(tid int) ([]*SlotMapping, error) {
 		if m != nil {
 			slots[i] = m
 		} else {
-			slots[i] = &SlotMapping{Id: i}
+			slots[i] = &SlotMapping{Id: i, TableId:tid}
 		}
 	}
 	return slots, nil
@@ -196,6 +207,10 @@ func (s *Store) LoadSlotMapping(tid int, sid int, must bool) (*SlotMapping, erro
 
 func (s *Store) UpdateSlotMapping(tid int, m *SlotMapping) error {
 	return s.client.Update(s.SlotPath(tid, m.Id), m.Encode())
+}
+
+func (s *Store) RemoveSlotMapping(tid int, m *SlotMapping) error {
+	return s.client.Delete(s.SlotPath(tid, m.Id))
 }
 
 func (s *Store) ListGroup() (map[int]*Group, error) {
@@ -276,7 +291,10 @@ func (s *Store) UpdateTable(t *Table) error {
 }
 
 func (s *Store) DeleteTable(tid int) error {
-	return s.client.Delete(s.TablePath(tid))
+	if err := s.client.Delete(s.TablePath(tid)); err != nil {
+		return err
+	}
+	return s.client.Delete(s.TableSlotDir(tid))
 }
 
 func (s *Store) ListProxy() (map[string]*Proxy, error) {

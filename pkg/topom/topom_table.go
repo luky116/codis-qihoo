@@ -93,6 +93,11 @@ func (s *Topom) RemoveTable(tid int) error {
 			return  errors.Errorf("table-[%d] slot-[%d] is still in use, please off-line slot first", tid, i)
 		}
 	}
+	for _, m := range ctx.slots[tid] {
+			if err := s.storeRemoveSlotMapping(tid, m); err !=nil {
+				return err
+			}
+		}
 	defer s.dirtyTableCache(tid)
 	return s.storeRemoveTable(t)
 }
