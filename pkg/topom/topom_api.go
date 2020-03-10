@@ -1064,23 +1064,23 @@ func (c *ApiClient) SyncRemoveAction(addr string) error {
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) SlotCreateAction(sid int, gid int) error {
-	url := c.encodeURL("/api/topom/slots/action/create/%s/%d/%d", c.xauth, sid, gid)
+func (c *ApiClient) SlotCreateAction(tid, sid int, gid int) error {
+	url := c.encodeURL("/api/topom/slots/action/create/%s/%d/%d/%d", c.xauth, tid, sid, gid)
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) SlotCreateActionSome(groupFrom, groupTo int, numSlots int) error {
-	url := c.encodeURL("/api/topom/slots/action/create-some/%s/%d/%d/%d", c.xauth, groupFrom, groupTo, numSlots)
+func (c *ApiClient) SlotCreateActionSome(tid, groupFrom, groupTo int, numSlots int) error {
+	url := c.encodeURL("/api/topom/slots/action/create-some/%s/%d/%d/%d/%d", c.xauth, tid, groupFrom, groupTo, numSlots)
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) SlotCreateActionRange(beg, end int, gid int) error {
-	url := c.encodeURL("/api/topom/slots/action/create-range/%s/%d/%d/%d", c.xauth, beg, end, gid)
+func (c *ApiClient) SlotCreateActionRange(tid, beg, end int, gid int) error {
+	url := c.encodeURL("/api/topom/slots/action/create-range/%s/%d/%d/%d/%d", c.xauth, tid, beg, end, gid)
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) SlotRemoveAction(sid int) error {
-	url := c.encodeURL("/api/topom/slots/action/remove/%s/%d", c.xauth, sid)
+func (c *ApiClient) SlotRemoveAction(tid, sid int) error {
+	url := c.encodeURL("/api/topom/slots/action/remove/%s/%d/%d", c.xauth, tid,  sid)
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
@@ -1099,7 +1099,7 @@ func (c *ApiClient) SetSlotActionDisabled(disabled bool) error {
 }
 
 func (c *ApiClient) SlotsAssignGroup(tid int, slots []*models.SlotMapping) error {
-	url := c.encodeURL("/api/topom/slots/assign/%s/%s", c.xauth, tid)
+	url := c.encodeURL("/api/topom/slots/assign/%s/%d", c.xauth, tid)
 	return rpc.ApiPutJson(url, slots, nil)
 }
 

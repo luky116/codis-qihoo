@@ -33,7 +33,7 @@ type context struct {
 }
 
 func (ctx *context) getSlotMapping(tid int, sid int) (*models.SlotMapping, error) {
-	if len(ctx.slots) != ctx.table[tid].MaxSlotMum {
+	if len(ctx.slots[tid]) != ctx.table[tid].MaxSlotMum {
 		return nil, errors.Errorf("invalid table-[%d] number of slots = %d/%d",tid, len(ctx.slots[tid]), ctx.table[tid].MaxSlotMum)
 	}
 	if sid >= 0 && sid < ctx.table[tid].MaxSlotMum {
@@ -181,11 +181,7 @@ func (ctx *context) toSlotSlice(slots []*models.SlotMapping, p *models.Proxy) []
 }
 
 func (ctx *context) toAllSlotSlice(slots map[int][]*models.SlotMapping, p *models.Proxy) []*models.Slot {
-	var length = 0
-	for _, s := range slots {
-		length += len(s)
-	}
-	var slice = make([]*models.Slot, length)
+	var slice []*models.Slot
 	for _, m := range slots {
 		slice = append(slice, ctx.toSlotSlice(m, p)...)
 	}

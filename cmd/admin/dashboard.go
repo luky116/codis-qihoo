@@ -238,7 +238,7 @@ func (t *cmdDashboard) handleSlotsCommand(d map[string]interface{}) {
 		slots := []*models.SlotMapping{}
 		for i := beg; i <= end; i++ {
 			slots = append(slots, &models.SlotMapping{
-				Id: i,
+				Id: i, TableId:tid,
 			})
 		}
 
@@ -267,7 +267,7 @@ func (t *cmdDashboard) handleSlotsCommand(d map[string]interface{}) {
 		slots := []*models.SlotMapping{}
 		for i := beg; i <= end; i++ {
 			slots = append(slots, &models.SlotMapping{
-				Id: i, GroupId: gid,
+				Id: i, GroupId: gid, TableId: tid,
 			})
 		}
 
@@ -675,7 +675,7 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 		log.Debugf("call rpc table-list OK")
 
 		for _, t := range s.Table {
-			fmt.Printf("table ID: %d, table name: %s, slots num: %d", t.Id, t.Name, t.MaxSlotMum)
+			fmt.Printf("table ID: %d, table name: %s, slots num: %d\n", t.Id, t.Name, t.MaxSlotMum)
 		}
 		fmt.Println()
 	}
@@ -757,9 +757,10 @@ func (t *cmdDashboard) handleSlotActionCommand(d map[string]interface{}) {
 
 		sid := utils.ArgumentIntegerMust(d, "--sid")
 		gid := utils.ArgumentIntegerMust(d, "--gid")
+		tid := utils.ArgumentIntegerMust(d, "--tid")
 
 		log.Debugf("call rpc create-slot-action to dashboard %s", t.addr)
-		if err := c.SlotCreateAction(sid, gid); err != nil {
+		if err := c.SlotCreateAction(tid, sid, gid); err != nil {
 			log.PanicErrorf(err, "call rpc create-slot-action to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc create-slot-action OK")
@@ -767,9 +768,10 @@ func (t *cmdDashboard) handleSlotActionCommand(d map[string]interface{}) {
 	case d["--remove"].(bool):
 
 		sid := utils.ArgumentIntegerMust(d, "--sid")
+		tid := utils.ArgumentIntegerMust(d, "--tid")
 
 		log.Debugf("call rpc remove-slot-action to dashboard %s", t.addr)
-		if err := c.SlotRemoveAction(sid); err != nil {
+		if err := c.SlotRemoveAction(tid, sid); err != nil {
 			log.PanicErrorf(err, "call rpc remove-slot-action to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc remove-slot-action OK")
@@ -779,9 +781,10 @@ func (t *cmdDashboard) handleSlotActionCommand(d map[string]interface{}) {
 		src := utils.ArgumentIntegerMust(d, "--gid-from")
 		dst := utils.ArgumentIntegerMust(d, "--gid-to")
 		num := utils.ArgumentIntegerMust(d, "--num-slots")
+		tid := utils.ArgumentIntegerMust(d, "--tid")
 
 		log.Debugf("call rpc create-slot-action-some to dashboard %s", t.addr)
-		if err := c.SlotCreateActionSome(src, dst, num); err != nil {
+		if err := c.SlotCreateActionSome(tid, src, dst, num); err != nil {
 			log.PanicErrorf(err, "call rpc create-slot-action-some to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc create-slot-action-some OK")
@@ -791,9 +794,10 @@ func (t *cmdDashboard) handleSlotActionCommand(d map[string]interface{}) {
 		beg := utils.ArgumentIntegerMust(d, "--beg")
 		end := utils.ArgumentIntegerMust(d, "--end")
 		gid := utils.ArgumentIntegerMust(d, "--gid")
+		tid := utils.ArgumentIntegerMust(d, "--tid")
 
 		log.Debugf("call rpc create-slot-action-range to dashboard %s", t.addr)
-		if err := c.SlotCreateActionRange(beg, end, gid); err != nil {
+		if err := c.SlotCreateActionRange(tid, beg, end, gid); err != nil {
 			log.PanicErrorf(err, "call rpc create-slot-action-range to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc create-slot-action-range OK")

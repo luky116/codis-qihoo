@@ -17,20 +17,17 @@ func (s *Topom) CreateTable(name string, num int)  error {
 		return  err
 	}
 
-	ids := make([]int, len(ctx.table))
+	var ids []int
 	for id,table := range ctx.table  {
 		if name == table.Name {
-			return  errors.Errorf("name-[%d] already exists", id)
+			return  errors.Errorf("name-[%s] already exists", name)
 		}
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool {
-		return i < j
-	})
+	sort.Ints(ids)
 	var tid = 0
-	for _,id :=range ids {
+	for _, id := range ids {
 		if id != tid  {
-			tid ++
 			break
 		}
 		tid ++

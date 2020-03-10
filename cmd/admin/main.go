@@ -45,10 +45,10 @@ Usage:
 	codis-admin [-v] --dashboard=ADDR            --promote-server --gid=ID --addr=ADDR
 	codis-admin [-v] --dashboard=ADDR            --sync-action    --create --addr=ADDR
 	codis-admin [-v] --dashboard=ADDR            --sync-action    --remove --addr=ADDR
-	codis-admin [-v] --dashboard=ADDR            --slot-action    --create --sid=ID --gid=ID
-	codis-admin [-v] --dashboard=ADDR            --slot-action    --remove --sid=ID
-	codis-admin [-v] --dashboard=ADDR            --slot-action    --create-some  --gid-from=ID --gid-to=ID --num-slots=N
-	codis-admin [-v] --dashboard=ADDR            --slot-action    --create-range --beg=ID --end=ID --gid=ID
+	codis-admin [-v] --dashboard=ADDR            --slot-action    --create --sid=ID --gid=ID --tid=ID
+	codis-admin [-v] --dashboard=ADDR            --slot-action    --remove --sid=ID --tid=ID
+	codis-admin [-v] --dashboard=ADDR            --slot-action    --create-some  --gid-from=ID --gid-to=ID --num-slots=N --tid=ID
+	codis-admin [-v] --dashboard=ADDR            --slot-action    --create-range --beg=ID --end=ID --gid=ID --tid=ID
 	codis-admin [-v] --dashboard=ADDR            --slot-action    --interval=VALUE
 	codis-admin [-v] --dashboard=ADDR            --slot-action    --disabled=VALUE
 	codis-admin [-v] --dashboard=ADDR            --rebalance     [--confirm]
