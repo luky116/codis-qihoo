@@ -554,3 +554,156 @@ Codis 3.x 的组件兼容 Jodis 协议。
 因为 Codis 2.x 与 Codis 3.x 在外部存储中的组织结构不同，所以可以安全的 `kill` 掉全部 Codis 2.x 组件。
 
 **注意：关闭过程请不要使用 `kill -9`，因为旧组件在退出时会自动清理部分注册信息。**
+
+## 6 codis 多表版本使用说明
+codis在该版本中支持动态创建table，对应界面未做修改，因此配置界面codis-fe不再支持，应使用命令行进行配置。建议新手用户使用单表版本配置，熟悉流程结构后再使用多表版本。
+
+### 6.1 部署建议
+建议使用etcd作为dashboard的高可用配置。目前支持etcd API V2版本，V3版本正在开发中。
+
+创建table -> 创建goup -> group添加server -> sync server -> group分配slot
+
+高可用：哨兵集群
+
+### 6.3命令行使用
+
+使用 -h查看使用说明
+```
+./bin/codis-admin -h 
+Usage:
+        codis-admin [-v] --proxy=ADDR [--auth=AUTH] [config|model|stats|slots]
+```
+-v表示设置命令行工具的log级别为debug级别，不使用时表示log级别为info。
+
+#### 创建table
+```
+./bin/codis-admin   --dashboard=127.0.0.1:18080  --create-table --name=table2 --num=10
+```
+name 表示table的名字
+
+num 表示设置table的slot数目
+#### 查看table
+```
+./bin/codis-admin --dashboard=127.0.0.1:18080  --list-table
+table ID: 0, table name: table1, slots num: 10
+table ID: 1, table name: table2, slots num: 64
+```
+#### 删除table
+```
+/bin/codis-admin --dashboard=127.0.0.1:18080  --remove-table --tid=0
+```
+tid 表示table的id号
+#### 创建group
+```
+/bin/codis-admin   --dashboard=127.0.0.1:18080  --create-group --gid=1 
+```
+gid的取值范围是（0，9999]，gid注意最小值为1
+#### 查看group
+
+```
+./bin/codis-admin   --dashboard=127.0.0.1:18080  --list-group
+[
+    {
+        "id": 1,
+        "servers": [],
+        "promoting": {},
+        "out_of_sync": false
+    },
+    {
+        "id": 2,
+        "servers": [],
+        "promoting": {},
+        "out_of_sync": false
+    }
+]
+```
+id 表示group的gid
+
+servers 表示在group的server，即pika实例
+
+promoting：为提升一个server为master的状态，取值为：
+
+* preparing
+* prepared
+* finished
+#### 删除group
+```
+/bin/codis-admin   --dashboard=127.0.0.1:18080  --remove-group --gid=1
+```
+注意：只有group为空，即group中没有server才允许删除。
+
+#### 添加server
+```
+./bin/codis-admin   --dashboard=127.0.0.1:18080  --group-add --gid=1 --addr=10.208.40.79:9221 
+```
+#### 查看group状态
+```
+./bin/codis-admin   --dashboard=127.0.0.1:18080  --group-status 
+[ ] group-1 [0] 10.208.40.79:9221      ==> NO:ONE
+[X] group-1 [1] 10.208.40.79:9222      ==> NO:ONE
+```
+ [ ]表示主为no one的状态或者从为slaveof的状态
+ 
+ [X]表示从的状态为 no one
+ 
+ [T]表示请求超时
+
+[0]表示group中server的id
+
+#### 删除group中的server
+```
+./bin/codis-admin   --dashboard=127.0.0.1:18080  --group-del  --gid=1 --addr=10.208.40.79:9222 
+```
+注意：group中的最后一个server没有分配slot时，才允许删除该server。
+
+
+#### sync server
+```
+/bin/codis-admin   --dashboard=127.0.0.1:18080  --sync-action --create --addr=10.208.40.79:9221
+```
+sync server的作用是dashboard与pika之间的同步。对于master会执行`slaveof no one` ，对于slave会执行`slave master_ip master_port`
+执行成功后会把server的状态置为synced，失败会置为sync_failed.可以通过list-group来查看结果。
+#### replica-groups
+```
+./bin/codis-admin   --dashboard=127.0.0.1:18080   --replica-groups --gid=1 --addr=10.208.40.79:9221 --enable
+```
+该对组内的server开启读写分离的功能，使得enable的server可以进行读操作。对于组内server配置replica完成后，应执行resync操作，从而使得dashboard与proxy的元信息进行同步。
+#### resync-group
+```
+./bin/codis-admin   --dashboard=127.0.0.1:18080   --resync-group --gid=1
+```
+该操作比较重，因此最好在group的replica配置完成后，只进行一次操作。
+#### slot-assign
+```
+./bin/codis-admin   --dashboard=127.0.0.1:18080  --slots-assign --beg=0 --end=7 --gid=1 --tid=0 --confirm
+```
+ --confirm 表示确认
+把表内的slot分配到各个group，该命令适合于表建立完成后初次分配slots。
+
+--offline 表示把server里的slot全部离线，从而可以删除group中的server。
+
+#### slot 迁移
+```
+./bin/codis-admin   --dashboard=127.0.0.1:18080  --slot-action --create-range --beg=0 --end=7 --gid=1 --tid=1
+```
+beg 为迁移slot的起始id
+
+end 为迁移slot的结束id
+
+gid 为目的group的id
+
+#### 添加哨兵
+```
+./bin/codis-admin  --dashboard=127.0.0.1:18080 --sentinel-add --addr=10.208.40.79:3456
+```
+addr 为哨兵的端口地址
+
+#### 删除哨兵
+```
+./bin/codis-admin  --dashboard=127.0.0.1:18080 --sentinel-del --addr=10.208.40.79:3456
+```
+#### 主从切换
+```
+./bin/codis-admin  --dashboard=127.0.0.1:18080 --promote-server --gid=1 --addr=10.208.40.79:9221
+```
+
