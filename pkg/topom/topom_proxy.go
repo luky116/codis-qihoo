@@ -125,6 +125,9 @@ func (s *Topom) newProxyClient(p *models.Proxy) *proxy.ApiClient {
 
 func (s *Topom) reinitProxy(ctx *context, p *models.Proxy, c *proxy.ApiClient) error {
 	log.Warnf("proxy-[%s] reinit:\n%s", p.Token, p.Encode())
+	for _, t := range ctx.table {
+		log.Infof("reinint proxy ctx table id: %d",t.Id)
+	}
 	if err := c.FillTables(ctx.toTableSlice(ctx.table)...); err != nil {
 		log.ErrorErrorf(err, "proxy-[%s] set tables failed", p.Token)
 		return errors.Errorf("proxy-[%s] set table failed", p.Token)
@@ -168,6 +171,58 @@ func (s *Topom) resyncSlotMappings(ctx *context, slots ...*models.SlotMapping) e
 		case error:
 			if err != nil {
 				return errors.Errorf("proxy-[%s] resync slots failed", t)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Topom) createTable(ctx *context, table *models.Table) error {
+	if table == nil {
+		return nil
+	}
+	var fut sync2.Future
+	for _, p := range ctx.proxy {
+		fut.Add()
+		go func(p *models.Proxy) {
+			err := s.newProxyClient(p).CreateTables(table)
+			if err != nil {
+				log.ErrorErrorf(err, "proxy-[%s] add table failed", p.Token)
+			}
+			fut.Done(p.Token, err)
+		}(p)
+	}
+	for t, v := range fut.Wait() {
+		switch err := v.(type) {
+		case error:
+			if err != nil {
+				return errors.Errorf("proxy-[%s] add table failed", t)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Topom) removeTable(ctx *context, table *models.Table) error {
+	if table == nil {
+		return nil
+	}
+	var fut sync2.Future
+	for _, p := range ctx.proxy {
+		fut.Add()
+		go func(p *models.Proxy) {
+			err := s.newProxyClient(p).RemoveTables(table)
+			if err != nil {
+				log.ErrorErrorf(err, "proxy-[%s] del table failed", p.Token)
+			}
+			fut.Done(p.Token, err)
+		}(p)
+	}
+	for t, v := range fut.Wait() {
+		switch err := v.(type) {
+		case error:
+			if err != nil {
+				return errors.Errorf("proxy-[%s] del table failed", t)
 			}
 		}
 	}

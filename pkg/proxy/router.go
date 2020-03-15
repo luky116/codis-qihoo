@@ -17,6 +17,7 @@ import (
 
 type Router struct {
 	mu sync.RWMutex
+	tableMutex sync.RWMutex
 
 	pool struct {
 		primary *sharedBackendConnPool
@@ -34,6 +35,8 @@ func NewRouter(config *Config) *Router {
 	s := &Router{config: config}
 	s.pool.primary = newSharedBackendConnPool(config, config.BackendPrimaryParallel)
 	s.pool.replica = newSharedBackendConnPool(config, config.BackendReplicaParallel)
+	s.table = make(map[int]*models.Table)
+	s.slots = make(map[int][]Slot)
 //	for i := range s.slots {
 //		s.slots[i].id = i
 //		s.slots[i].method = &forwardSync{}
@@ -66,11 +69,7 @@ func (s *Router) Close() {
 func (s *Router) GetSlots() []*models.Slot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var length = 0
-	for _, s := range s.slots {
-		length += len(s)
-	}
-	slots := make([]*models.Slot, length)
+	var slots []*models.Slot
 	for i := range s.slots {
 		for j := range s.slots[i] {
 			slots = append(slots, s.slots[i][j].snapshot())
@@ -110,18 +109,26 @@ var (
 )
 
 
-func (s *Router) DelTables() {
+func (s *Router) DelTable(t *models.Table) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	for i, _ := range s.table {
-		delete(s.table, i)
-	}
+	delete(s.table, t.Id)
 }
 
 func (s *Router) FillTable(t *models.Table) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.table[t.Id] = t
+	log.Infof("fill table-[%d]", t.Id)
+}
+
+func (s *Router) GetTable(tid int) *models.Table {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	s.table[t.Id] = t
+	if t , ok := s.table[tid]; ok {
+		return t
+	}
+	return nil
 }
 
 func (s *Router) FillSlot(m *models.Slot) error {
@@ -129,6 +136,12 @@ func (s *Router) FillSlot(m *models.Slot) error {
 	defer s.mu.Unlock()
 	if s.closed {
 		return ErrClosedRouter
+	}
+	//s.tableMutex.RLock()
+	//defer s.tableMutex.RUnlock()
+	if _, ok := s.table[m.TableId]; !ok {
+		log.Infof("slot table id: %d, slot id: %d ", m.TableId, m.Id)
+		return  ErrInvalidTableId
 	}
 	if m.Id < 0 || m.Id >= s.table[m.TableId].MaxSlotMum {
 		return ErrInvalidSlotId
@@ -191,18 +204,22 @@ func (s *Router) dispatchAddr(r *Request, addr string) bool {
 }
 
 func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
+	if _ , ok := s.slots[m.TableId]; !ok {
+		var slots []Slot
+		s.slots[m.TableId] = slots
+	}
 	slot := &s.slots[m.TableId][m.Id]
 	slot.blockAndWait()
 
-	slot.backend.bc.Release()
+	slot.backend.bc.Release(m.TableId)
 	slot.backend.bc = nil
 	slot.backend.id = 0
-	slot.migrate.bc.Release()
+	slot.migrate.bc.Release(m.TableId)
 	slot.migrate.bc = nil
 	slot.migrate.id = 0
 	for i := range slot.replicaGroups {
 		for _, bc := range slot.replicaGroups[i] {
-			bc.Release()
+			bc.Release(m.TableId)
 		}
 	}
 	slot.replicaGroups = nil
@@ -210,18 +227,18 @@ func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 	slot.switched = switched
 
 	if addr := m.BackendAddr; len(addr) != 0 {
-		slot.backend.bc = s.pool.primary.Retain(s.table,  addr)
+		slot.backend.bc = s.pool.primary.Retain(s.table[m.TableId],  addr)
 		slot.backend.id = m.BackendAddrGroupId
 	}
 	if from := m.MigrateFrom; len(from) != 0 {
-		slot.migrate.bc = s.pool.primary.Retain(s.table, from)
+		slot.migrate.bc = s.pool.primary.Retain(s.table[m.TableId], from)
 		slot.migrate.id = m.MigrateFromGroupId
 	}
 	if !s.config.BackendPrimaryOnly {
 		for i := range m.ReplicaGroups {
 			var group []*sharedBackendConn
 			for _, addr := range m.ReplicaGroups[i] {
-				group = append(group, s.pool.replica.Retain(s.table, addr))
+				group = append(group, s.pool.replica.Retain(s.table[m.TableId], addr))
 			}
 			if len(group) == 0 {
 				continue

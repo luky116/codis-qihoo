@@ -40,11 +40,12 @@ type BackendConn struct {
 	config *Config
 
 	database int
+	refcnt int
 }
 
 func NewBackendConn(addr string, database int, config *Config) *BackendConn {
 	bc := &BackendConn{
-		addr: addr, config: config, database: database,
+		addr: addr, config: config, database: database, refcnt: 1,
 	}
 	bc.input = make(chan *Request, 1024)
 	bc.retry.delay = &DelayExp2{
@@ -55,6 +56,33 @@ func NewBackendConn(addr string, database int, config *Config) *BackendConn {
 	go bc.run()
 
 	return bc
+}
+
+func (bc *BackendConn) Release() bool {
+	if bc == nil {
+		return true
+	}
+	if bc.refcnt <= 0 {
+		log.Panicf("shared backend conn addr-[%s] DB-[d%] has been closed, close too many times", bc.addr, bc.database)
+		return true
+	} else {
+		bc.refcnt--
+	}
+	if bc.refcnt != 0 {
+		return false
+	}
+	return  true
+}
+
+func (bc *BackendConn) Retain()  {
+	if bc == nil {
+		return
+	}
+	if bc.refcnt <= 0 {
+		log.Panicf("backend conn has been closed")
+	} else {
+		bc.refcnt++
+	}
 }
 
 func (bc *BackendConn) Addr() string {
@@ -381,7 +409,7 @@ type sharedBackendConn struct {
 	refcnt int
 }
 
-func newSharedBackendConn(t map[int]*models.Table, addr string, pool *sharedBackendConnPool) *sharedBackendConn {
+func newSharedBackendConn(t *models.Table, addr string, pool *sharedBackendConnPool) *sharedBackendConn {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		log.ErrorErrorf(err, "split host-port failed, address = %s", addr)
@@ -392,22 +420,21 @@ func newSharedBackendConn(t map[int]*models.Table, addr string, pool *sharedBack
 	}
 	s.owner = pool
 	s.conns = make(map[int][]*BackendConn)
-
-	for database := range t {
-		parallel := make([]*BackendConn, pool.parallel)
-		for i := range parallel {
-			parallel[i] = NewBackendConn(addr, database, pool.config)
-		}
-		s.conns[database] = parallel
-	}
-	if pool.parallel == 1 {
-		s.single = make(map[int]*BackendConn)
-		for database := range s.conns {
-			s.single[database] = s.conns[database][0]
-		}
-	}
+	s.addSharedBackendConn(t, addr, pool)
 	s.refcnt = 1
 	return s
+}
+
+func (s *sharedBackendConn)addSharedBackendConn(t *models.Table, addr string, pool *sharedBackendConnPool) {
+	parallel := make([]*BackendConn, pool.parallel)
+	for i := range parallel {
+		parallel[i] = NewBackendConn(addr, t.Id, pool.config)
+	}
+	s.conns[t.Id] = parallel
+	if pool.parallel == 1 {
+		s.single = make(map[int]*BackendConn)
+			s.single[t.Id] = s.conns[t.Id][0]
+	}
 }
 
 func (s *sharedBackendConn) Addr() string {
@@ -417,7 +444,7 @@ func (s *sharedBackendConn) Addr() string {
 	return s.addr
 }
 
-func (s *sharedBackendConn) Release() {
+func (s *sharedBackendConn) Release(tid int) {
 	if s == nil {
 		return
 	}
@@ -425,19 +452,20 @@ func (s *sharedBackendConn) Release() {
 		log.Panicf("shared backend conn has been closed, close too many times")
 	} else {
 		s.refcnt--
+		if bc := s.conns[tid][0]; bc.Release(){
+			for _, bc := range s.conns[tid] {
+				bc.Close()
+			}
+			delete(s.conns, tid)
+		}
 	}
 	if s.refcnt != 0 {
 		return
 	}
-	for _, parallel := range s.conns {
-		for _, bc := range parallel {
-			bc.Close()
-		}
-	}
 	delete(s.owner.pool, s.addr)
 }
 
-func (s *sharedBackendConn) Retain() *sharedBackendConn {
+func (s *sharedBackendConn) Retain(tid int) *sharedBackendConn {
 	if s == nil {
 		return nil
 	}
@@ -445,6 +473,8 @@ func (s *sharedBackendConn) Retain() *sharedBackendConn {
 		log.Panicf("shared backend conn has been closed")
 	} else {
 		s.refcnt++
+		bc := s.conns[tid][0]
+		bc.Retain()
 	}
 	return s
 }
@@ -513,9 +543,14 @@ func (p *sharedBackendConnPool) Get(addr string) *sharedBackendConn {
 	return p.pool[addr]
 }
 
-func (p *sharedBackendConnPool) Retain(t map[int]*models.Table, addr string) *sharedBackendConn {
+func (p *sharedBackendConnPool) Retain(t *models.Table, addr string) *sharedBackendConn {
 	if bc := p.pool[addr]; bc != nil {
-		return bc.Retain()
+		if dc := bc.conns[t.Id]; dc != nil {
+			bc.addSharedBackendConn(t, addr, p)
+			return  bc
+		} else {
+			return bc.Retain(t.Id)
+		}
 	} else {
 		bc = newSharedBackendConn(t, addr, p)
 		p.pool[addr] = bc

@@ -3,6 +3,7 @@ package topom
 import (
 	"github.com/CodisLabs/codis/pkg/models"
 	"github.com/CodisLabs/codis/pkg/utils/errors"
+	"github.com/CodisLabs/codis/pkg/utils/log"
 	"sort"
 )
 
@@ -43,7 +44,14 @@ func (s *Topom) CreateTable(name string, num int)  error {
 		Name:		name,
 		MaxSlotMum: num,
 	}
-	return  s.storeCreateTable(t)
+	if err := s.storeCreateTable(t); err != nil {
+		return err
+	}
+	if err := s.createTable(ctx, t); err != nil {
+		log.Warnf("table-[%s] tid-[%d] sync to proxy failed", t.Name, t.Id)
+		return  err
+	}
+	return nil
 }
 
 func (s *Topom) ListTable() ([]*models.Table, error) {
@@ -95,6 +103,10 @@ func (s *Topom) RemoveTable(tid int) error {
 				return err
 			}
 		}
+	if err := s.removeTable(ctx, t); err != nil {
+		log.Warnf("table-[%s] tid-[%d] sync to proxy failed", t.Name, t.Id)
+		return err
+	}
 	defer s.dirtyTableCache(tid)
 	return s.storeRemoveTable(t)
 }

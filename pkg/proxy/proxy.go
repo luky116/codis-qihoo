@@ -266,9 +266,53 @@ func (s *Proxy) FillTables(tables []*models.Table) error {
 	if s.closed {
 		return ErrClosedProxy
 	}
-	s.router.DelTables()
 	for _, t := range tables {
+		log.Infof("proxy get table id :%d", t.Id)
 		s.router.FillTable(t)
+	}
+	return nil
+}
+
+func (s *Proxy) CreateTable(table *models.Table) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return ErrClosedProxy
+	}
+	if t := s.router.GetTable(table.Id); t != nil {
+		return errors.New("tablle in proxy has existed.")
+	}
+	s.router.FillTable(table)
+	for i := 0; i < table.MaxSlotMum; i ++ {
+		sm := &models.Slot{
+			Id: 		i,
+			TableId: 	table.Id,
+			ForwardMethod: models.ForwardSemiAsync,
+		}
+		if err := s.router.FillSlot(sm); err != nil {
+			return  err
+		}
+	}
+	return nil
+}
+
+func (s *Proxy) RemoveTable(table *models.Table) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return ErrClosedProxy
+	}
+	if t := s.router.GetTable(table.Id); t == nil {
+		return nil
+	}
+	s.router.DelTable(table)
+	for i := 0; i < table.MaxSlotMum; i ++ {
+		sm := &models.Slot{
+			Id: 		i,
+			TableId: 	table.Id,
+			ForwardMethod: models.ForwardSemiAsync,
+		}
+		s.router.FillSlot(sm)
 	}
 	return nil
 }
