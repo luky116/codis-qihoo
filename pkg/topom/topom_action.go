@@ -16,7 +16,7 @@ import (
 
 func (s *Topom) ProcessSlotAction() error {
 	table, err := s.tables()
-	if err == nil {
+	if err != nil {
 		return  err
 	}
 	for tid, _ :=range table {
@@ -53,7 +53,7 @@ func (s *Topom) ProcessSlotAction() error {
 			}
 			if len(plans) == 0 {
 		//		return nil
-				continue
+				break
 			}
 			var fut sync2.Future
 			for sid, _ := range plans {
