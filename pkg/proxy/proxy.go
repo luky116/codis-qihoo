@@ -274,6 +274,7 @@ func (s *Proxy) FillTables(tables []*models.Table) error {
 }
 
 func (s *Proxy) CreateTable(table *models.Table) error {
+	log.Infof("begin fill table in create table-[%d]", table.Id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -282,14 +283,15 @@ func (s *Proxy) CreateTable(table *models.Table) error {
 	if t := s.router.GetTable(table.Id); t != nil {
 		return errors.New("tablle in proxy has existed.")
 	}
+	log.Infof("prepare fill table in create table-[%d]", table.Id)
 	s.router.FillTable(table)
 	for i := 0; i < table.MaxSlotMum; i ++ {
-		sm := &models.Slot{
+		m := &models.Slot{
 			Id: 		i,
 			TableId: 	table.Id,
 			ForwardMethod: models.ForwardSemiAsync,
 		}
-		if err := s.router.FillSlot(sm); err != nil {
+		if err := s.router.FillSlot(m); err != nil {
 			return  err
 		}
 	}

@@ -177,7 +177,7 @@ func (s *Topom) resyncSlotMappings(ctx *context, slots ...*models.SlotMapping) e
 	return nil
 }
 
-func (s *Topom) createTable(ctx *context, table *models.Table) error {
+func (s *Topom) syncCreateTable(ctx *context, table *models.Table) error {
 	if table == nil {
 		return nil
 	}
@@ -185,7 +185,7 @@ func (s *Topom) createTable(ctx *context, table *models.Table) error {
 	for _, p := range ctx.proxy {
 		fut.Add()
 		go func(p *models.Proxy) {
-			err := s.newProxyClient(p).CreateTables(table)
+			err := s.newProxyClient(p).CreateTable(table)
 			if err != nil {
 				log.ErrorErrorf(err, "proxy-[%s] add table failed", p.Token)
 			}
@@ -203,7 +203,7 @@ func (s *Topom) createTable(ctx *context, table *models.Table) error {
 	return nil
 }
 
-func (s *Topom) removeTable(ctx *context, table *models.Table) error {
+func (s *Topom) syncRemoveTable(ctx *context, table *models.Table) error {
 	if table == nil {
 		return nil
 	}
@@ -211,7 +211,7 @@ func (s *Topom) removeTable(ctx *context, table *models.Table) error {
 	for _, p := range ctx.proxy {
 		fut.Add()
 		go func(p *models.Proxy) {
-			err := s.newProxyClient(p).RemoveTables(table)
+			err := s.newProxyClient(p).RemoveTable(table)
 			if err != nil {
 				log.ErrorErrorf(err, "proxy-[%s] del table failed", p.Token)
 			}

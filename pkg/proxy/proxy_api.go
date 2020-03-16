@@ -79,8 +79,8 @@ func newApiServer(p *Proxy) http.Handler {
 		r.Put("/loglevel/:xauth/:value", api.LogLevel)
 		r.Put("/fillslots/:xauth", binding.Json([]*models.Slot{}), api.FillSlots)
 		r.Put("/filltables/:xauth", binding.Json([]*models.Table{}), api.FillTables)
-		r.Put("/createtable/:xauth", binding.Json(models.Table{}), api.CreateTables)
-		r.Put("/removetable/:xauth", binding.Json(models.Table{}), api.RemoveTables)
+		r.Put("/createtable/:xauth", binding.Json(models.Table{}), api.CreateTable)
+		r.Put("/removetable/:xauth", binding.Json(models.Table{}), api.RemoveTable)
 		r.Put("/sentinels/:xauth", binding.Json(models.Sentinel{}), api.SetSentinels)
 		r.Put("/sentinels/:xauth/rewatch", api.RewatchSentinels)
 	})
@@ -230,21 +230,22 @@ func (s *apiServer) FillTables(tables []*models.Table, params martini.Params) (i
 	return rpc.ApiResponseJson("OK")
 }
 
-func (s *apiServer) CreateTables(table *models.Table, params martini.Params) (int, string) {
+func (s *apiServer) CreateTable(table models.Table, params martini.Params) (int, string) {
+	log.Infof("get in to create table api")
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if err := s.proxy.CreateTable(table); err != nil {
+	if err := s.proxy.CreateTable(&table); err != nil {
 		return rpc.ApiResponseError(err)
 	}
 	return rpc.ApiResponseJson("OK")
 }
 
-func (s *apiServer) RemoveTables(table *models.Table, params martini.Params) (int, string) {
+func (s *apiServer) RemoveTable(table models.Table, params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if err := s.proxy.RemoveTable(table); err != nil {
+	if err := s.proxy.RemoveTable(&table); err != nil {
 		return rpc.ApiResponseError(err)
 	}
 	return rpc.ApiResponseJson("OK")
@@ -375,12 +376,12 @@ func (c *ApiClient) FillTables(tables ...*models.Table) error {
 	return rpc.ApiPutJson(url, tables, nil)
 }
 
-func (c *ApiClient) CreateTables(t *models.Table) error {
+func (c *ApiClient) CreateTable(t *models.Table) error {
 	url := c.encodeURL("/api/proxy/createtable/%s", c.xauth)
 	return rpc.ApiPutJson(url, t, nil)
 }
 
-func (c *ApiClient) RemoveTables(t *models.Table) error {
+func (c *ApiClient) RemoveTable(t *models.Table) error {
 	url := c.encodeURL("/api/proxy/removetable/%s", c.xauth)
 	return rpc.ApiPutJson(url, t, nil)
 }

@@ -205,7 +205,7 @@ func (s *Router) dispatchAddr(r *Request, addr string) bool {
 
 func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 	if _ , ok := s.slots[m.TableId]; !ok {
-		var slots []Slot
+		 slots := make ([]Slot, s.table[m.TableId].MaxSlotMum)
 		s.slots[m.TableId] = slots
 	}
 	slot := &s.slots[m.TableId][m.Id]

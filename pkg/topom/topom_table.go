@@ -47,7 +47,7 @@ func (s *Topom) CreateTable(name string, num int)  error {
 	if err := s.storeCreateTable(t); err != nil {
 		return err
 	}
-	if err := s.createTable(ctx, t); err != nil {
+	if err := s.syncCreateTable(ctx, t); err != nil {
 		log.Warnf("table-[%s] tid-[%d] sync to proxy failed", t.Name, t.Id)
 		return  err
 	}
@@ -103,7 +103,7 @@ func (s *Topom) RemoveTable(tid int) error {
 				return err
 			}
 		}
-	if err := s.removeTable(ctx, t); err != nil {
+	if err := s.syncRemoveTable(ctx, t); err != nil {
 		log.Warnf("table-[%s] tid-[%d] sync to proxy failed", t.Name, t.Id)
 		return err
 	}
