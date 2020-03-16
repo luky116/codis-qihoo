@@ -193,9 +193,6 @@ func (ctx *context) toTableSlice(tables map[int]*models.Table) []*models.Table {
 	for _, t := range tables {
 		slice = append(slice, t)
 	}
-	for _, s := range slice {
-		log.Infof( "table slot", s.Id)
-	}
 	return slice
 }
 

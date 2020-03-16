@@ -125,9 +125,6 @@ func (s *Topom) newProxyClient(p *models.Proxy) *proxy.ApiClient {
 
 func (s *Topom) reinitProxy(ctx *context, p *models.Proxy, c *proxy.ApiClient) error {
 	log.Warnf("proxy-[%s] reinit:\n%s", p.Token, p.Encode())
-	for _, t := range ctx.table {
-		log.Infof("reinint proxy ctx table id: %d",t.Id)
-	}
 	if err := c.FillTables(ctx.toTableSlice(ctx.table)...); err != nil {
 		log.ErrorErrorf(err, "proxy-[%s] set tables failed", p.Token)
 		return errors.Errorf("proxy-[%s] set table failed", p.Token)

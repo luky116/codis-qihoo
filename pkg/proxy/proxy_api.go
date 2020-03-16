@@ -370,9 +370,6 @@ func (c *ApiClient) FillSlots(slots ...*models.Slot) error {
 
 func (c *ApiClient) FillTables(tables ...*models.Table) error {
 	url := c.encodeURL("/api/proxy/filltables/%s", c.xauth)
-	for _, s := range tables {
-		log.Infof( "api table slot", s.Id)
-	}
 	return rpc.ApiPutJson(url, tables, nil)
 }
 
