@@ -187,7 +187,7 @@ func (s *Store) SlotMappings(tid int) ([]*SlotMapping, error) {
 		if m != nil {
 			slots[i] = m
 		} else {
-			slots[i] = &SlotMapping{Id: i, TableId:tid}
+			slots[i] = &SlotMapping{Id: i, TableId: tid, GroupId: 0,}
 		}
 	}
 	return slots, nil

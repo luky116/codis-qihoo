@@ -363,6 +363,7 @@ func (s *Topom) SlotActionComplete(tid int, sid int) error {
 		m = &models.SlotMapping{
 			Id:      m.Id,
 			GroupId: m.Action.TargetId,
+			TableId: m.TableId,
 		}
 		return s.storeUpdateSlotMapping(tid, m)
 

@@ -219,8 +219,6 @@ func (s *apiServer) FillSlots(slots []*models.Slot, params martini.Params) (int,
 }
 
 func (s *apiServer) FillTables(tables []*models.Table, params martini.Params) (int, string) {
-	log.Info("get in FillTables()")
-
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}

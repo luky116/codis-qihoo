@@ -420,6 +420,7 @@ func newSharedBackendConn(t *models.Table, addr string, pool *sharedBackendConnP
 	}
 	s.owner = pool
 	s.conns = make(map[int][]*BackendConn)
+	s.single = make(map[int]*BackendConn)
 	s.addSharedBackendConn(t, addr, pool)
 	s.refcnt = 1
 	return s
@@ -432,7 +433,6 @@ func (s *sharedBackendConn)addSharedBackendConn(t *models.Table, addr string, po
 	}
 	s.conns[t.Id] = parallel
 	if pool.parallel == 1 {
-		s.single = make(map[int]*BackendConn)
 			s.single[t.Id] = s.conns[t.Id][0]
 	}
 }
@@ -545,12 +545,10 @@ func (p *sharedBackendConnPool) Get(addr string) *sharedBackendConn {
 
 func (p *sharedBackendConnPool) Retain(t *models.Table, addr string) *sharedBackendConn {
 	if bc := p.pool[addr]; bc != nil {
-		if dc := bc.conns[t.Id]; dc != nil {
+		if dc := bc.conns[t.Id]; dc == nil {
 			bc.addSharedBackendConn(t, addr, p)
-			return  bc
-		} else {
-			return bc.Retain(t.Id)
 		}
+		return bc.Retain(t.Id)
 	} else {
 		bc = newSharedBackendConn(t, addr, p)
 		p.pool[addr] = bc

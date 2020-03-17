@@ -267,7 +267,6 @@ func (s *Proxy) FillTables(tables []*models.Table) error {
 		return ErrClosedProxy
 	}
 	for _, t := range tables {
-		log.Infof("proxy get table id :%d", t.Id)
 		s.router.FillTable(t)
 	}
 	return nil

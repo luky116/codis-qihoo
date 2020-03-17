@@ -205,8 +205,12 @@ func (s *Router) dispatchAddr(r *Request, addr string) bool {
 
 func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 	if _ , ok := s.slots[m.TableId]; !ok {
-		 slots := make ([]Slot, s.table[m.TableId].MaxSlotMum)
+		slots := make ([]Slot, s.table[m.TableId].MaxSlotMum)
 		s.slots[m.TableId] = slots
+		for i := range slots {
+			slots[i].id = i
+			slots[i].method = &forwardSync{}
+		}
 	}
 	slot := &s.slots[m.TableId][m.Id]
 	slot.blockAndWait()
@@ -267,8 +271,8 @@ func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 				log.Warnf("fill slot %04d, backend.addr = %s, locked = %t, +switched",
 					slot.id, slot.backend.bc.Addr(), slot.lock.hold)
 			} else {
-				log.Warnf("fill slot %04d, backend.addr = %s, locked = %t",
-					slot.id, slot.backend.bc.Addr(), slot.lock.hold)
+				log.Warnf("fill slot %04d, table %04d, backend.addr = %s, locked = %t",
+					slot.id, m.TableId, slot.backend.bc.Addr(), slot.lock.hold)
 			}
 		}
 	}
