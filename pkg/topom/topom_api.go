@@ -1104,7 +1104,7 @@ func (c *ApiClient) SlotsAssignGroup(tid int, slots []*models.SlotMapping) error
 }
 
 func (c *ApiClient) SlotsAssignOffline(tid int, slots []*models.SlotMapping) error {
-	url := c.encodeURL("/api/topom/slots/assign/%s/%s/offline", c.xauth, tid)
+	url := c.encodeURL("/api/topom/slots/assign/%s/%d/offline", c.xauth, tid)
 	return rpc.ApiPutJson(url, slots, nil)
 }
 

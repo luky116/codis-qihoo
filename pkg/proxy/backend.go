@@ -60,7 +60,7 @@ func NewBackendConn(addr string, database int, config *Config) *BackendConn {
 
 func (bc *BackendConn) Release() bool {
 	if bc == nil {
-		return true
+		return false
 	}
 	if bc.refcnt <= 0 {
 		log.Panicf("shared backend conn addr-[%s] DB-[d%] has been closed, close too many times", bc.addr, bc.database)
@@ -435,6 +435,7 @@ func (s *sharedBackendConn)addSharedBackendConn(t *models.Table, addr string, po
 	if pool.parallel == 1 {
 			s.single[t.Id] = s.conns[t.Id][0]
 	}
+	s.conns[t.Id][0].refcnt = 1
 }
 
 func (s *sharedBackendConn) Addr() string {
@@ -454,15 +455,20 @@ func (s *sharedBackendConn) Release(tid int) {
 		s.refcnt--
 		if bc := s.conns[tid][0]; bc.Release(){
 			for _, bc := range s.conns[tid] {
-				bc.Close()
+				if bc != nil {
+					bc.Close()
+				}
 			}
+			log.Infof("close connection addr-[%s] db-[%d]", s.addr, tid)
 			delete(s.conns, tid)
 		}
+
 	}
 	if s.refcnt != 0 {
 		return
 	}
 	delete(s.owner.pool, s.addr)
+	log.Infof("delete addr-[%s] in connection pool", s.addr, tid)
 }
 
 func (s *sharedBackendConn) Retain(tid int) *sharedBackendConn {
