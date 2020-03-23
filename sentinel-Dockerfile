@@ -1,6 +1,6 @@
 FROM centos:7.2.1511
 
-RUN rpm -ivh https://mirrors.ustc.edu.cn/epel/epel-release-latest-7.noarch.rpm && \
+RUN rpm -ivh https://mirrors.aliyun.com/epel/epel-release-latest-7.noarch.rpm && \
     yum install -y autoconf g++ gcc glibc golang make git
 
 ENV GOPATH /gopath
@@ -12,3 +12,8 @@ RUN make -C ${CODIS} distclean
 RUN make -C ${CODIS} build-all
 
 WORKDIR /codis
+
+
+ENTRYPOINT ["/gopath/src/github.com/CodisLabs/codis/scripts/sentinel-entrypoint.sh"] 
+CMD ["redis-sentinel", "./sentinel.conf"] 
+
