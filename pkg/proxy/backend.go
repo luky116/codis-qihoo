@@ -420,7 +420,9 @@ func newSharedBackendConn(t *models.Table, addr string, pool *sharedBackendConnP
 	}
 	s.owner = pool
 	s.conns = make(map[int][]*BackendConn)
-	s.single = make(map[int]*BackendConn)
+	if pool.parallel == 1 {
+		s.single = make(map[int]*BackendConn)
+	}
 	s.addSharedBackendConn(t, addr, pool)
 	s.refcnt = 1
 	return s
@@ -430,6 +432,7 @@ func (s *sharedBackendConn)addSharedBackendConn(t *models.Table, addr string, po
 	parallel := make([]*BackendConn, pool.parallel)
 	for i := range parallel {
 		parallel[i] = NewBackendConn(addr, t.Id, pool.config)
+		log.Infof("table-[%d] parallel-[%d] add backend conn ", t.Id, i)
 	}
 	s.conns[t.Id] = parallel
 	if pool.parallel == 1 {
@@ -468,7 +471,7 @@ func (s *sharedBackendConn) Release(tid int) {
 		return
 	}
 	delete(s.owner.pool, s.addr)
-	log.Infof("delete addr-[%s] in connection pool", s.addr, tid)
+	log.Infof("delete addr-[%s] table-[%d] in connection pool", s.addr, tid)
 }
 
 func (s *sharedBackendConn) Retain(tid int) *sharedBackendConn {
@@ -508,7 +511,6 @@ func (s *sharedBackendConn) BackendConn(database int, seed uint, must bool) *Bac
 		}
 		return nil
 	}
-
 	var parallel = s.conns[database]
 
 	var i = seed
