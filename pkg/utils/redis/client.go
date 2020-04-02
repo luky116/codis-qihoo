@@ -32,6 +32,25 @@ type Client struct {
 	}
 }
 
+type InfoTable struct {
+	tid int
+	slot map[int]InfoSlot
+}
+
+type InfoSlot struct {
+	sid int
+	fileNum int
+	offset int
+	role string
+	slave []Slave
+}
+
+type Slave struct {
+	addr string
+	status string
+	lag int
+}
+
 func NewClientNoAuth(addr string, timeout time.Duration) (*Client, error) {
 	return NewClient(addr, "", timeout)
 }
@@ -152,6 +171,84 @@ func (c *Client) Info() (map[string]string, error) {
 		}
 	}
 	return info, nil
+}
+
+func (c *Client) InfoSlot() (map[int]InfoTable, error) {
+	text, err := redigo.String(c.Do("PKCLUSTER INFO SLOT"))
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	chunk := strings.Split(text, "\r\n\r\n")
+	table := make(map [int]InfoTable)
+	var tid int
+	for _, field := range chunk {
+		line := strings.Split(field, "\r\n")
+		if len(line) >=3 {
+			kv := strings.SplitN(line[0], ":", 2)
+			t := strings.TrimPrefix(kv[0],"(db")
+			skv := strings.SplitN(kv[1], ")", 2)
+			s := skv[0]
+			bkv := strings.SplitN(skv[1], ",", 2 )
+			fkv := strings.SplitN(strings.TrimPrefix(bkv[0], " binlog_offset="), " ", 2)
+			fileNum := fkv[0]
+			offset := fkv[1]
+			infoSlot := InfoSlot{}
+			if m, err := strconv.Atoi(t); err == nil {
+				tid = m
+				if _, ok := table[tid]; ok != true {
+					slot := make(map [int]InfoSlot)
+					infoTable := InfoTable{tid:tid, slot:slot}
+					table[tid] = infoTable
+				}
+			} else {
+				return nil, err
+			}
+			if m, err := strconv.Atoi(s); err == nil {
+				infoSlot.sid = m
+			} else {
+				return nil, err
+			}
+			if m, err := strconv.Atoi(fileNum); err == nil {
+				infoSlot.fileNum = m
+			} else {
+				return nil, err
+			}
+			if m, err := strconv.Atoi(offset); err == nil {
+				infoSlot.offset = m
+			} else {
+				return nil, err
+			}
+
+			kv = strings.SplitN(line[1], ":", 2)
+			infoSlot.role = strings.TrimSpace(kv[1])
+
+			kv = strings.SplitN(line[2], ":", 2)
+			slaves := strings.TrimSpace(kv[1])
+			var slaveNum int
+			if m, err := strconv.Atoi(slaves); err == nil {
+				slaveNum = m
+			} else {
+				return nil, err
+			}
+			slave := make([]Slave, slaveNum)
+			for i := range slave {
+				kv := strings.SplitN(line[3 + i * 3], ":", 2)
+				slave[i].addr =  strings.TrimSpace(kv[1])
+				kv = strings.SplitN(line[3 + i * 3 + 1], ":", 2)
+				slave[i].status =  strings.TrimSpace(kv[1])
+				kv = strings.SplitN(line[3 + i * 3 + 2], ":", 2)
+				lag :=  strings.TrimSpace(kv[1])
+				if t, err := strconv.Atoi(lag); err == nil {
+					slave[i].lag = t
+				} else {
+					return nil, err
+				}
+			}
+			infoSlot.slave = slave
+			table[tid].slot[infoSlot.sid] = infoSlot
+		}
+	}
+	return table, nil
 }
 
 func (c *Client) InfoKeySpace() (map[int]string, error) {
