@@ -33,22 +33,22 @@ type Client struct {
 }
 
 type InfoTable struct {
-	tid int
-	slot map[int]InfoSlot
+	Tid  int
+	Slot map[int]InfoSlot
 }
 
 type InfoSlot struct {
-	sid int
-	fileNum int
-	offset int
-	role string
-	slave []Slave
+	Slot    int
+	FileNum int
+	Offset  int
+	Role    string
+	Slave   []Slave
 }
 
 type Slave struct {
-	addr string
-	status string
-	lag int
+	Addr string
+	Status string
+	Lag int
 }
 
 func NewClientNoAuth(addr string, timeout time.Duration) (*Client, error) {
@@ -172,7 +172,18 @@ func (c *Client) Info() (map[string]string, error) {
 	}
 	return info, nil
 }
+/* info slot
+(db0:0) binlog_offset=0 0,safety_purge=none
+  Role: Master
+  connected_slaves: 2
+  slave[0]: 127.0.0.1:9223
+  replication_status: SlaveBinlogSync
+  lag: 0
+  slave[1]: 127.0.0.1:9222
+  replication_status: SlaveBinlogSync
+  lag: 0
 
+*/
 func (c *Client) InfoSlot() (map[int]InfoTable, error) {
 	text, err := redigo.String(c.Do("PKCLUSTER INFO SLOT"))
 	if err != nil {
@@ -197,30 +208,30 @@ func (c *Client) InfoSlot() (map[int]InfoTable, error) {
 				tid = m
 				if _, ok := table[tid]; ok != true {
 					slot := make(map [int]InfoSlot)
-					infoTable := InfoTable{tid:tid, slot:slot}
+					infoTable := InfoTable{Tid: tid, Slot:slot}
 					table[tid] = infoTable
 				}
 			} else {
 				return nil, err
 			}
 			if m, err := strconv.Atoi(s); err == nil {
-				infoSlot.sid = m
+				infoSlot.Slot = m
 			} else {
 				return nil, err
 			}
 			if m, err := strconv.Atoi(fileNum); err == nil {
-				infoSlot.fileNum = m
+				infoSlot.FileNum = m
 			} else {
 				return nil, err
 			}
 			if m, err := strconv.Atoi(offset); err == nil {
-				infoSlot.offset = m
+				infoSlot.Offset = m
 			} else {
 				return nil, err
 			}
 
 			kv = strings.SplitN(line[1], ":", 2)
-			infoSlot.role = strings.TrimSpace(kv[1])
+			infoSlot.Role = strings.TrimSpace(kv[1])
 
 			kv = strings.SplitN(line[2], ":", 2)
 			slaves := strings.TrimSpace(kv[1])
@@ -233,19 +244,19 @@ func (c *Client) InfoSlot() (map[int]InfoTable, error) {
 			slave := make([]Slave, slaveNum)
 			for i := range slave {
 				kv := strings.SplitN(line[3 + i * 3], ":", 2)
-				slave[i].addr =  strings.TrimSpace(kv[1])
+				slave[i].Addr =  strings.TrimSpace(kv[1])
 				kv = strings.SplitN(line[3 + i * 3 + 1], ":", 2)
-				slave[i].status =  strings.TrimSpace(kv[1])
+				slave[i].Status =  strings.TrimSpace(kv[1])
 				kv = strings.SplitN(line[3 + i * 3 + 2], ":", 2)
 				lag :=  strings.TrimSpace(kv[1])
 				if t, err := strconv.Atoi(lag); err == nil {
-					slave[i].lag = t
+					slave[i].Lag = t
 				} else {
 					return nil, err
 				}
 			}
-			infoSlot.slave = slave
-			table[tid].slot[infoSlot.sid] = infoSlot
+			infoSlot.Slave = slave
+			table[tid].Slot[infoSlot.Slot] = infoSlot
 		}
 	}
 	return table, nil
@@ -551,6 +562,15 @@ func (p *Pool) InfoFull(addr string) (_ map[string]string, err error) {
 	}
 	defer p.PutClient(c)
 	return c.InfoFull()
+}
+
+func (p *Pool) InfoSlot(addr string) ( map[int]InfoTable,  error) {
+	c, err := p.GetClient(addr)
+	if err != nil {
+		return nil, err
+	}
+	defer p.PutClient(c)
+	return c.InfoSlot()
 }
 
 type InfoCache struct {
