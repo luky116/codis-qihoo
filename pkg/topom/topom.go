@@ -77,6 +77,12 @@ type Topom struct {
 		monitor *redis.Sentinel
 		masters map[int]string
 	}
+
+	manager struct {
+		redisp *redis.Pool
+		servers map[string]*PikaInfo
+		status map[string]*PikaPing
+	}
 }
 
 var ErrClosedTopom = errors.New("use of closed topom")
@@ -112,6 +118,9 @@ func New(client models.Client, config *Config) (*Topom, error) {
 	s.stats.redisp = redis.NewPool(config.ProductAuth, time.Second*5)
 	s.stats.servers = make(map[string]*RedisStats)
 	s.stats.proxies = make(map[string]*ProxyStats)
+
+	s.manager.redisp = redis.NewPool(config.ProductAuth, time.Second*5)
+	s.manager.servers = make(map[string]*PikaInfo)
 
 	if err := s.setup(config); err != nil {
 		s.Close()
@@ -160,7 +169,7 @@ func (s *Topom) Close() error {
 		s.ladmin.Close()
 	}
 	for _, p := range []*redis.Pool{
-		s.action.redisp, s.stats.redisp, s.ha.redisp,
+		s.action.redisp, s.stats.redisp, s.ha.redisp, s.manager.redisp,
 	} {
 		if p != nil {
 			p.Close()
@@ -212,6 +221,18 @@ func (s *Topom) Start(routines bool) error {
 				}
 			}
 			time.Sleep(time.Second)
+		}
+	}()
+
+	go func() {
+		for !s.IsClosed() {
+			if s.IsOnline() {
+				w, _ := s.RefreshPikaInfo(time.Second)
+				if w != nil {
+					w.Wait()
+				}
+			}
+			time.Sleep(time.Second * 3)
 		}
 	}()
 

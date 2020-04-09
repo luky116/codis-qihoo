@@ -262,6 +262,21 @@ func (c *Client) InfoSlot() (map[int]InfoTable, error) {
 	return table, nil
 }
 
+func (c *Client) Ping() (bool, error) {
+	text, err := redigo.String(c.Do("PING"))
+	if err != nil {
+		return false, errors.Trace(err)
+	}
+	switch text {
+	case "pong":
+		return true, nil
+	case "PONG":
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
 func (c *Client) InfoKeySpace() (map[int]string, error) {
 	text, err := redigo.String(c.Do("INFO", "keyspace"))
 	if err != nil {
@@ -571,6 +586,15 @@ func (p *Pool) InfoSlot(addr string) ( map[int]InfoTable,  error) {
 	}
 	defer p.PutClient(c)
 	return c.InfoSlot()
+}
+
+func (p *Pool) Ping(addr string) ( bool,  error) {
+	c, err := p.GetClient(addr)
+	if err != nil {
+		return false, err
+	}
+	defer p.PutClient(c)
+	return c.Ping()
 }
 
 type InfoCache struct {
