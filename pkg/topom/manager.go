@@ -1,14 +1,17 @@
 package topom
 
 import (
+	"github.com/CodisLabs/codis/pkg/utils/log"
 	"github.com/CodisLabs/codis/pkg/utils/redis"
 	"github.com/CodisLabs/codis/pkg/utils/rpc"
 	"github.com/CodisLabs/codis/pkg/utils/sync2"
+	"net/http"
 	"time"
 )
 
 const  donwAfterPeriod = 1000
-const  infoPeriod = 10000
+const  infoPeriod = 1000
+const  pingPeriod = 1000
 
 type PikaInfo struct {
 	Table map[int]redis.InfoTable
@@ -22,11 +25,16 @@ type PikaInfo struct {
 }
 
 type PikaPing struct {
-	Addr string
-	online bool
-	Error *rpc.RemoteError  `json:"error,omitempty"`
+	Addr     string
+	Offline  bool
+	Error    *rpc.RemoteError  `json:"error,omitempty"`
 	UnixTime int64 `json:"unixtime"`
 	Timeout  bool  `json:"timeout,omitempty"`
+}
+
+type Offline struct {
+	Addr string
+	LastTime int64
 }
 
 func (s *Topom) RefreshPikaInfo(timeout time.Duration) (*sync2.Future, error) {
@@ -98,11 +106,11 @@ func (s *Topom) newPikaPing(addr string, timeout time.Duration, do func(addr str
 		defer close(ch)
 		p, err := do(addr)
 		if err != nil {
-			ping.online = false
+			ping.Offline = false
 			ping.Error = rpc.NewRemoteError(err)
 		} else {
 			ping.Addr = addr
-			ping.online = p.online
+			ping.Offline = p.Offline
 		}
 	}()
 
@@ -110,7 +118,7 @@ func (s *Topom) newPikaPing(addr string, timeout time.Duration, do func(addr str
 	case <-ch:
 		return ping
 	case <-time.After(timeout):
-		return &PikaPing{Timeout: true, online: false}
+		return &PikaPing{Timeout: true, Offline: false}
 	}
 }
 
@@ -155,7 +163,7 @@ func (s *Topom) PikaPing(timeout time.Duration) (*sync2.Future, error) {
 				if err != nil {
 					return nil, err
 				}
-				return &PikaPing{online: m}, nil
+				return &PikaPing{Offline: m}, nil
 			})
 		}
 	}
@@ -171,6 +179,52 @@ func (s *Topom) PikaPing(timeout time.Duration) (*sync2.Future, error) {
 	return &fut, nil
 }
 
-func (* Topom) Manager() error {
+func (s *Topom) Manager()  {
+
+	down := make(chan int)
+	defer close(down)
+	go s.PingServer(pingPeriod, down)
+	go s.InfoServer(infoPeriod)
+	for range down {
+		s.HandleOffline()
+	}
+
 
 }
+
+func (s *Topom) PingServer(interval time.Duration, down chan int)  {
+	w, err := s.PikaPing(time.Second)
+	if err != nil {
+		log.Warnf("check server Offline error: %s", err)
+	}
+	if w != nil {
+		w.Wait()
+	}
+	down <- 1
+	time.Sleep(time.Millisecond * interval)
+}
+
+func (s *Topom) InfoServer(interval time.Duration)  {
+	w, err := s.RefreshPikaInfo(time.Second)
+	if err != nil {
+		log.Warnf("check server Offline error: %s", err)
+	}
+	if w != nil {
+		w.Wait()
+	}
+	time.Sleep(time.Millisecond * interval)
+}
+
+//func (s *Topom) HandleOffline() {
+//	s.mu.Lock()
+//	defer s.mu.Unlock()
+//	master, err := s.GetMaster()
+//	log.Warnf("Get master error: %s", err)
+//	for _, p := range s.manager.status {
+//		if p.Offline == true {
+//			if s.manager.offLine
+//			offLine	= append(offLine, p.Addr)
+//		}
+//	}
+//	return offLine
+//}
