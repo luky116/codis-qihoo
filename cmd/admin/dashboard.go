@@ -35,6 +35,11 @@ func (t *cmdDashboard) Main(d map[string]interface{}) {
 	case d["--log-level"] != nil:
 		t.handleLogLevel(d)
 
+	case d["--set-manager"].(bool):
+		fallthrough
+	case d["--manager-status"].(bool):
+		t.handleManagerCommnad(d)
+
 	case d["--slots-assign"].(bool):
 		fallthrough
 	case d["--slots-status"].(bool):

@@ -79,7 +79,7 @@ func newApiServer(t *Topom) http.Handler {
 		r.Put("/reload/:xauth", api.Reload)
 		r.Put("/shutdown/:xauth", api.Shutdown)
 		r.Put("/loglevel/:xauth/:value", api.LogLevel)
-		r.Put("/manager/:xauth", api.SetManager)
+		r.Put("/manager/:xauth/:value", api.SetManager)
 		r.Group("/proxy", func(r martini.Router) {
 			r.Put("/create/:xauth/:addr", api.CreateProxy)
 			r.Put("/Offline/:xauth/:addr", api.OnlineProxy)
@@ -810,7 +810,7 @@ func (s *apiServer) SetManager(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	op, err := s.parseString(params, "op")
+	op, err := s.parseString(params, "value")
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}

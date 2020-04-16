@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const  donwAfterPeriod = 10000
+const  donwAfterPeriod = 5
 const  infoPeriod = 1000
 const  pingPeriod = 1000
 
@@ -36,7 +36,7 @@ type Server struct {
 }
 
 type Offline struct {
-	Servers [] *Server
+	Servers map[int] *Server
 	Action string
 }
 
@@ -82,6 +82,7 @@ func (s *Topom) RefreshPikaInfo(timeout time.Duration) (*sync2.Future, error) {
 	for _, g := range ctx.group {
 		for _, x := range g.Servers {
 			goInfo(x.Addr, func(addr string) (*PikaInfo, error) {
+				log.Info("info slot")
 				m, err := s.manager.redisp.InfoSlot(addr)
 				if err != nil {
 					return nil, err
@@ -110,6 +111,7 @@ func (s *Topom) newPikaInfo(addr string, timeout time.Duration, do func(addr str
 		defer close(ch)
 		p, err := do(addr)
 		if err != nil {
+			info.Timeout = true
 			info.Error = rpc.NewRemoteError(err)
 		} else {
 			info.Table = p.Table
@@ -124,18 +126,20 @@ func (s *Topom) newPikaInfo(addr string, timeout time.Duration, do func(addr str
 	}
 }
 
-func (s *Topom) newPikaPing(addr string, timeout time.Duration, do func(addr string) (* PikaPing, error)) *PikaPing {
+func (s *Topom) newPikaPing(gid, sid int, addr string, timeout time.Duration, do func(addr string) (* PikaPing, error)) *PikaPing {
 	var ch = make(chan struct{})
 	ping:= &PikaPing{}
 
 	go func() {
 		defer close(ch)
 		p, err := do(addr)
+		ping.Addr = addr
+		ping.Gid = gid
+		ping.ServerId = sid
 		if err != nil {
 			ping.Offline = true
 			ping.Error = rpc.NewRemoteError(err)
 		} else {
-			ping.Addr = addr
 			ping.Offline = p.Offline
 		}
 	}()
@@ -160,22 +164,22 @@ func (s *Topom) PikaPing(timeout time.Duration) (*sync2.Future, error) {
 		return nil, err
 	}
 	var fut sync2.Future
-	goPing := func(addr string, do func(addr string) (*PikaPing, error)) {
+	goPing := func(gid, sid int, addr string, do func(addr string) (*PikaPing, error)) {
 		fut.Add()
 		go func() {
-			ping := s.newPikaPing(addr, timeout, do)
+			ping := s.newPikaPing(gid, sid, addr, timeout, do)
 			ping.UnixTime = time.Now().Unix()
 			fut.Done(addr, ping)
 		}()
 	}
 	for gid, g := range ctx.group {
 		for sid, x := range g.Servers {
-			goPing(x.Addr, func(addr string) (*PikaPing, error) {
+			goPing(gid, sid, x.Addr, func(addr string) (*PikaPing, error) {
 				m, err := s.manager.redisp.Ping(addr)
 				if err != nil {
 					return nil, err
 				}
-				return &PikaPing{Offline: m, Gid: gid, ServerId: sid}, nil
+				return &PikaPing{Offline: m }, nil
 			})
 		}
 	}
@@ -219,6 +223,7 @@ func (s *Topom) PingServer(interval time.Duration, down chan int)  {
 }
 
 func (s *Topom) InfoServer(interval time.Duration)  {
+	log.Info("get into infoserver")
 	for s.GetManager() == true {
 		w, err := s.RefreshPikaInfo(time.Second)
 		if err != nil {
@@ -240,19 +245,22 @@ func (s *Topom) HandleOffline() error {
 	}
 	for _, p := range s.manager.status {
 		if p.Offline == true {
+			log.Infof("Group-[%d] server-[%s] subjective down ", p.Gid, p.Addr)
 			if _, ok := s.manager.offLine[p.Gid]; ok == false {
-				var servers []*Server
-				s.manager.offLine[p.Gid].Servers = servers
+				servers := make(map[int]*Server)
+				s.manager.offLine[p.Gid] = &Offline{Servers: servers}
 			}
-			downServer := s.manager.offLine[p.Gid].Servers[p.ServerId]
-			if downServer == nil {
+			if _, ok:= s.manager.offLine[p.Gid].Servers[p.ServerId]; ok == false  {
 				s.manager.offLine[p.Gid].Servers[p.ServerId] = &Server{FailTime: p.UnixTime, Status: p}
 				break
 			}
 			if s.manager.offLine[p.Gid].Action == models.ActionNothing {
+				log.Infof("saved falltime [%d]",s.manager.offLine[p.Gid].Servers[p.ServerId].FailTime )
 				if p.UnixTime - s.manager.offLine[p.Gid].Servers[p.ServerId].FailTime > donwAfterPeriod {
+					log.Warnf("Group-[%d] server-[%s] objective down", p.Gid, p.Addr)
 					if ctx.group[p.Gid].Servers[0].Addr == p.Addr {
 						s.manager.offLine[p.Gid].Action = models.ActionPreparing
+						log.Warnf("Group-[%d] master server-[%s] down", p.Gid, p.Addr)
 						go s.HandleMigrate(p.Gid)
 					}
 				}
@@ -261,12 +269,10 @@ func (s *Topom) HandleOffline() error {
 			if _, ok := s.manager.offLine[p.Gid]; ok == false {
 				break
 			}
-			if s.manager.offLine[p.Gid].Servers[p.ServerId] == nil {
+			if _, ok := s.manager.offLine[p.Gid].Servers[p.ServerId]; ok == false {
 				break
 			}
-			if s.manager.offLine[p.Gid].Action == models.ActionNothing {
-				s.manager.offLine[p.Gid].Servers[p.ServerId] = nil
-			}
+				delete(s.manager.offLine[p.Gid].Servers, p.ServerId)
 		}
 	}
 	return nil
@@ -292,16 +298,21 @@ func (s *Topom) HandleMigrate(gid int) error {
 	pikaInfo := s.manager.servers
 	s.mu.Unlock()
 	if (len(g.Servers) - 1) == 0 {
+		log.Warnf("group-[%d] has no slave", gid)
 		return nil
 	}
 
 	slaves := make(map[int]Slave, len(g.Servers) - 1)
-	for i, _ := range g.Servers[1:] {
-		if pikaInfo[g.Servers[i].Addr].Timeout == true {
-			break
+	t := g.Servers[1:]
+	for i, server := range t {
+		if pikaInfo[server.Addr].Timeout == true {
+			log.Warnf("group-[%d] slave-[%s] has been timeout,it will not be migrate", gid, server.Addr)
+			//break
 		}
-		slaves[i] = Slave{Addr: g.Servers[i].Addr}
+		slaves[i] = Slave{Addr: server.Addr}
 	}
+	log.Info("get all valuable slaves ")
+	log.Println(slaves)
 	masterLog := make(map[int]redis.InfoTable)
 	for _, slave := range slaves {
 		for  t := range pikaInfo[slave.Addr].Table {
@@ -356,24 +367,34 @@ func (s *Topom) HandleMigrate(gid int) error {
 			master = i
 		}
 	}
+	log.Warnf("server-[%s] will be new master", slaves[master].Addr)
 	for i, t := range pikaInfo[slaves[master].Addr].Table {
 		if err := s.manager.redisp.SlveofNoOne(slaves[master].Addr, i); err !=nil {
 			log.Warnf("group-[%d] addr-[%s] slaveof no one error:%s", gid, slaves[master].Addr, err)
 		}
 		for j, slot := range t.Slot {
 			if slot.MasterAddr != masterLog[i].Slot[j].MasterAddr {
-				if err := s.manager.redisp.SlotSlaveof(slaves[master].Addr, j, i); err !=nil {
+				if err := s.manager.redisp.SlotSlaveof(slaves[master].Addr, masterLog[i].Slot[j].MasterAddr, j, i); err !=nil {
 					log.Warnf("group-[%d] addr-[%s] slotsslaveof slot-[%d] table-[%d] error:%s", gid, slaves[master].Addr, j, i, err)
 				}
 			}
 		}
 	}
+	log.Infof("group-[%d] new master-[%s] wait for sync", gid, slaves[master].Addr)
 	var done bool
 	for s.IsOnline(){
+		log.Info("sleep 1s")
 		time.Sleep(time.Second)
 		s.mu.Lock()
+		log.Infof("master addr :%s ", slaves[master].Addr)
+		log.Println( s.manager.servers[slaves[master].Addr].Table)
 		for i, t := range s.manager.servers[slaves[master].Addr].Table {
 			for j, slot := range t.Slot {
+				log.Println(slot.FileNum)
+				log.Println(pikaInfo[slaves[master].Addr].Table[i].Slot[j].FileNum)
+				log.Println(slot.FileNum)
+				log.Println(pikaInfo[slaves[master].Addr].Table[i].Slot[j].FileNum)
+				log.Infof("src filenum %d,slot %d ;des file %d slot %d",slot.FileNum,slot.Offset,pikaInfo[slaves[master].Addr].Table[i].Slot[j].FileNum,pikaInfo[slaves[master].Addr].Table[i].Slot[j].Offset )
 				if slot.FileNum != pikaInfo[slaves[master].Addr].Table[i].Slot[j].FileNum {
 					done = false
 					break
@@ -382,10 +403,12 @@ func (s *Topom) HandleMigrate(gid int) error {
 					done = false
 					break
 				}
+				done = true
 			}
 		}
 		s.mu.Unlock()
 		if done == true {
+			log.Warnf("group-[%d] server-[%s] lag has been 0, other slave try to slaveof new master", gid, slaves[master].Addr)
 			for _, slave := range slaves {
 				if slaves[master].Addr != slave.Addr {
 					for  t := range pikaInfo[slave.Addr].Table {
@@ -393,7 +416,7 @@ func (s *Topom) HandleMigrate(gid int) error {
 							log.Warnf("group-[%d] addr-[%s] slaveof no one error:%s", gid, slaves[master].Addr, err)
 							break
 						}
-						if err := s.manager.redisp.SlotSlaveofAll(slave.Addr, t); err !=nil {
+						if err := s.manager.redisp.SlotSlaveofAll(slave.Addr, slaves[master].Addr, t); err !=nil {
 							log.Warnf("group-[%d] addr-[%s] slotsslaveof all table-[%d] error:%s", gid, slaves[master].Addr, t, err)
 						}
 					}
@@ -402,10 +425,13 @@ func (s *Topom) HandleMigrate(gid int) error {
 			break
 		}
 	}
-	s.GroupPromoteServer(gid, slaves[master].Addr)
+	if err := s.GroupPromoteServer(gid, slaves[master].Addr); err !=nil {
+		log.Warnf("Imigrate has been donw ,but can't promote server-[%s]", slaves[master].Addr)
+	}
 	s.mu.Lock()
 	s.manager.offLine[gid].Action = models.ActionNothing
 	s.mu.Unlock()
+	log.Info("group-[%d] migrate done", gid)
 	return  nil
 }
 
