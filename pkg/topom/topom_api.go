@@ -75,9 +75,11 @@ func newApiServer(t *Topom) http.Handler {
 		r.Get("/stats/:xauth", api.Stats)
 		r.Get("/slots/:xauth", api.Slots)
 		r.Get("/tableslots/:xauth", api.TableSlots)
+		r.Get("/manager/:xauth", api.GetManager)
 		r.Put("/reload/:xauth", api.Reload)
 		r.Put("/shutdown/:xauth", api.Shutdown)
 		r.Put("/loglevel/:xauth/:value", api.LogLevel)
+		r.Put("/manager/:xauth", api.SetManager)
 		r.Group("/proxy", func(r martini.Router) {
 			r.Put("/create/:xauth/:addr", api.CreateProxy)
 			r.Put("/Offline/:xauth/:addr", api.OnlineProxy)
@@ -793,6 +795,43 @@ func (s *apiServer) Shutdown(params martini.Params) (int, string) {
 	}
 }
 
+func (s *apiServer) GetManager(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	status := s.topom.GetManager()
+	if status == true {
+		return rpc.ApiResponseJson("on")
+	}
+	return rpc.ApiResponseJson("off")
+}
+
+func (s *apiServer) SetManager(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	op, err := s.parseString(params, "op")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if op == "on" {
+		s.topom.SetManager(true)
+	} else if op == "off" {
+		s.topom.SetManager(false)
+	} else {
+		return rpc.ApiResponseError(fmt.Errorf("wrong op"))
+	}
+	return rpc.ApiResponseJson("OK")
+}
+
+func (s *apiServer) SetManagerOff(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	s.topom.SetManagerOff()
+	return rpc.ApiResponseJson("OK")
+}
+
 func (s *apiServer) SetSlotActionInterval(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
@@ -935,6 +974,20 @@ func (c *ApiClient) Reload() error {
 
 func (c *ApiClient) LogLevel(level log.LogLevel) error {
 	url := c.encodeURL("/api/topom/loglevel/%s/%s", c.xauth, level)
+	return rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) GetManager() (string, error) {
+	url := c.encodeURL("/api/topom/manager/%s", c.xauth )
+	var status string
+	if err := rpc.ApiGetJson(url, &status); err != nil {
+		return "", err
+	}
+	return status, nil
+}
+
+func (c *ApiClient) SetManager(op string) error {
+	url := c.encodeURL("/api/topom/manager/%s/%s", c.xauth, op )
 	return rpc.ApiPutJson(url, nil, nil)
 }
 

@@ -23,6 +23,8 @@ Usage:
 	codis-admin [-v] --dashboard=ADDR            --shutdown
 	codis-admin [-v] --dashboard=ADDR            --reload
 	codis-admin [-v] --dashboard=ADDR            --log-level=LEVEL
+	codis-admin [-v] --dashboard=ADDR            --manager-status
+	codis-admin [-v] --dashboard=ADDR            --set-manager (--enable|--disable)
 	codis-admin [-v] --dashboard=ADDR            --slots-assign   --beg=ID --end=ID (--gid=ID|--offline) --tid=ID [--confirm]
 	codis-admin [-v] --dashboard=ADDR            --slots-status
 	codis-admin [-v] --dashboard=ADDR            --list-proxy

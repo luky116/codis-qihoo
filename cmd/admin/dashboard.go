@@ -189,6 +189,41 @@ func (t *cmdDashboard) handleLogLevel(d map[string]interface{}) {
 	log.Debugf("call rpc loglevel OK")
 }
 
+func (t *cmdDashboard) handleManagerCommnad(d map[string]interface{}) {
+	c := t.newTopomClient()
+
+	switch {
+
+	case d["--manager-status"].(bool):
+		log.Debugf("call rpc manager to dashboard %s", t.addr)
+		o, err := c.GetManager()
+		if err != nil {
+			log.PanicErrorf(err, "call rpc manager to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc manager OK")
+
+		b, err := json.MarshalIndent(o, "", "    ")
+		if err != nil {
+			log.PanicErrorf(err, "json marshal failed")
+		}
+		fmt.Println(string(b))
+	case d["--set-manager"].(bool) :
+		value := d["--enable"].(bool)
+		var op string
+		if value == true {
+			op = "on"
+		}else {
+			op = "off"
+		}
+
+		log.Debugf("call rpc set-manager to dashboard %s", t.addr)
+		if err := c.SetManager(op); err != nil {
+			log.PanicErrorf(err, "call rpc set-manager to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc set manager OK")
+	}
+}
+
 func (t *cmdDashboard) handleShutdown(d map[string]interface{}) {
 	c := t.newTopomClient()
 

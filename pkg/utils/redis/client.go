@@ -5,6 +5,7 @@ package redis
 
 import (
 	"container/list"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -34,15 +35,19 @@ type Client struct {
 
 type InfoTable struct {
 	Tid  int
-	Slot map[int]InfoSlot
+	Slot map[int] *InfoSlot
 }
 
 type InfoSlot struct {
-	Slot    int
-	FileNum int
-	Offset  int
-	Role    string
-	Slave   []Slave
+	Slot       int
+	FileNum    int
+	Offset     int
+	Consensus  bool
+	Term       int
+	Index      int
+	Role       string
+	Slave      []Slave
+	MasterAddr string
 }
 
 type Slave struct {
@@ -184,13 +189,13 @@ func (c *Client) Info() (map[string]string, error) {
   lag: 0
 
 */
-func (c *Client) InfoSlot() (map[int]InfoTable, error) {
+func (c *Client) InfoSlot() (map[int]*InfoTable, error) {
 	text, err := redigo.String(c.Do("PKCLUSTER INFO SLOT"))
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
 	chunk := strings.Split(text, "\r\n\r\n")
-	table := make(map [int]InfoTable)
+	table := make(map [int]*InfoTable)
 	var tid int
 	for _, field := range chunk {
 		line := strings.Split(field, "\r\n")
@@ -207,9 +212,9 @@ func (c *Client) InfoSlot() (map[int]InfoTable, error) {
 			if m, err := strconv.Atoi(t); err == nil {
 				tid = m
 				if _, ok := table[tid]; ok != true {
-					slot := make(map [int]InfoSlot)
+					slot := make(map [int]*InfoSlot)
 					infoTable := InfoTable{Tid: tid, Slot:slot}
-					table[tid] = infoTable
+					table[tid] = &infoTable
 				}
 			} else {
 				return nil, err
@@ -230,10 +235,27 @@ func (c *Client) InfoSlot() (map[int]InfoTable, error) {
 				return nil, err
 			}
 
-			kv = strings.SplitN(line[1], ":", 2)
+			base := 0
+			
+			kv = strings.SplitN(line[1], "=", 2)
+			if strings.TrimSpace(kv[0]) == "consensus_last_log" {
+				base = 1
+				infoSlot.Consensus = true
+				item := strings.SplitN(kv[1], " ", 8)
+				if t, err := strconv.Atoi(item[5]); err == nil {
+					infoSlot.Term = t
+				}
+				if t, err := strconv.Atoi(item[7]); err == nil {
+					infoSlot.Index = t
+				}
+			} else {
+				base = 0
+			}
+
+			kv = strings.SplitN(line[base + 1], ":", 2)
 			infoSlot.Role = strings.TrimSpace(kv[1])
 
-			kv = strings.SplitN(line[2], ":", 2)
+			kv = strings.SplitN(line[base + 2], ":", 2)
 			slaves := strings.TrimSpace(kv[1])
 			var slaveNum int
 			if m, err := strconv.Atoi(slaves); err == nil {
@@ -243,11 +265,11 @@ func (c *Client) InfoSlot() (map[int]InfoTable, error) {
 			}
 			slave := make([]Slave, slaveNum)
 			for i := range slave {
-				kv := strings.SplitN(line[3 + i * 3], ":", 2)
+				kv := strings.SplitN(line[base + 3 + i * 3], ":", 2)
 				slave[i].Addr =  strings.TrimSpace(kv[1])
-				kv = strings.SplitN(line[3 + i * 3 + 1], ":", 2)
+				kv = strings.SplitN(line[base + 3 + i * 3 + 1], ":", 2)
 				slave[i].Status =  strings.TrimSpace(kv[1])
-				kv = strings.SplitN(line[3 + i * 3 + 2], ":", 2)
+				kv = strings.SplitN(line[base + 3 + i * 3 + 2], ":", 2)
 				lag :=  strings.TrimSpace(kv[1])
 				if t, err := strconv.Atoi(lag); err == nil {
 					slave[i].Lag = t
@@ -256,7 +278,7 @@ func (c *Client) InfoSlot() (map[int]InfoTable, error) {
 				}
 			}
 			infoSlot.Slave = slave
-			table[tid].Slot[infoSlot.Slot] = infoSlot
+			table[tid].Slot[infoSlot.Slot] = &infoSlot
 		}
 	}
 	return table, nil
@@ -325,7 +347,44 @@ func (c *Client) InfoFull() (map[string]string, error) {
 	}
 }
 
+func (c *Client) SlaveofNoOne(addr string, t int) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	cmd := fmt.Sprintf("PKCLUSTER SLOTSSLOVEOF NO ONE ALL %d",t)
+	if _, err := c.Do(cmd, host, port, t); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
+func (c *Client) SlotSlaveof(addr string, s, t int) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	cmd := fmt.Sprintf("PKCLUSTER SLOTSSLOVEOF %d %d", s, t)
+	if _, err := c.Do(cmd, host, port, t); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
+func (c *Client) SlotSlaveofAll(addr string, t int) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	cmd := fmt.Sprintf("PKCLUSTER SLOTSSLOVEOF all %d", t)
+	if _, err := c.Do(cmd, host, port, t); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
 func (c *Client) SetMaster(master string) error {
+	/*
 	host, port, err := net.SplitHostPort(master)
 	if err != nil {
 		return errors.Trace(err)
@@ -336,7 +395,6 @@ func (c *Client) SetMaster(master string) error {
 	if _, err := c.Do("SLAVEOF", host, port); err != nil {
 		return errors.Trace(err)
 	}
-	/*
 	c.Send("MULTI")
 	c.Send("CONFIG", "SET", "masterauth", c.Auth)
 	c.Send("SLAVEOF", host, port)
@@ -579,7 +637,7 @@ func (p *Pool) InfoFull(addr string) (_ map[string]string, err error) {
 	return c.InfoFull()
 }
 
-func (p *Pool) InfoSlot(addr string) ( map[int]InfoTable,  error) {
+func (p *Pool) InfoSlot(addr string) ( map[int]*InfoTable,  error) {
 	c, err := p.GetClient(addr)
 	if err != nil {
 		return nil, err
@@ -595,6 +653,33 @@ func (p *Pool) Ping(addr string) ( bool,  error) {
 	}
 	defer p.PutClient(c)
 	return c.Ping()
+}
+
+func (p *Pool) SlveofNoOne(addr string, tid int) error {
+	c, err := p.GetClient(addr)
+	if err != nil {
+		return  err
+	}
+	defer p.PutClient(c)
+	return c.SlaveofNoOne(addr, tid)
+}
+
+func (p *Pool) SlotSlaveof(addr string, sid, tid int) error {
+	c, err := p.GetClient(addr)
+	if err != nil {
+		return  err
+	}
+	defer p.PutClient(c)
+	return c.SlotSlaveof(addr, sid, tid)
+}
+
+func (p *Pool) SlotSlaveofAll(addr string, tid int) error {
+	c, err := p.GetClient(addr)
+	if err != nil {
+		return  err
+	}
+	defer p.PutClient(c)
+	return c.SlotSlaveofAll(addr, tid)
 }
 
 type InfoCache struct {

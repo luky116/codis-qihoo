@@ -49,6 +49,7 @@ type Topom struct {
 	config *Config
 	online bool
 	closed bool
+	managerOn bool `json:"manager_on"`
 
 	ladmin net.Listener
 
@@ -120,6 +121,7 @@ func New(client models.Client, config *Config) (*Topom, error) {
 	s.stats.servers = make(map[string]*RedisStats)
 	s.stats.proxies = make(map[string]*ProxyStats)
 
+	s.managerOn = false
 	s.manager.redisp = redis.NewPool(config.ProductAuth, time.Second*5)
 	s.manager.servers = make(map[string]*PikaInfo)
 	s.manager.offLine = make(map[int]*Offline)
@@ -229,14 +231,11 @@ func (s *Topom) Start(routines bool) error {
 	go func() {
 		for !s.IsClosed() {
 			if s.IsOnline() {
-
-				s.Manager()
-//				w, _ := s.RefreshPikaInfo(time.Second)
-//				if w != nil {
-//					w.Wait()
-//				}
+				if s.GetManager() == true {
+					s.Manager()
+				}
 			}
-//			time.Sleep(time.Second * 3)
+			time.Sleep(time.Second)
 		}
 	}()
 
