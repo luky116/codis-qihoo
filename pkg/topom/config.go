@@ -89,9 +89,9 @@ type Config struct {
 	SentinelNotificationScript   string            `toml:"sentinel_notification_script" json:"sentinel_notification_script"`
 	SentinelClientReconfigScript string            `toml:"sentinel_client_reconfig_script" json:"sentinel_client_reconfig_script"`
 
-	ManagerPingPeriod			time.Duration	`toml:"manager_ping_period" json:"manager_ping_perido"`
-	ManagerInfoPeriod			time.Duration	`toml:"manager_info_period" json:"manager_info_perido"`
-	ManagerDownAfter			int64	`toml:"manager_down_after_period" json:"manager_down_after_perido"`
+	ManagerPingPeriod			time.Duration	`toml:"manager_ping_period" json:"manager_ping_period"`
+	ManagerInfoPeriod			time.Duration	`toml:"manager_info_period" json:"manager_info_period"`
+	ManagerDownAfter			int64	`toml:"manager_down_after" json:"manager_down_after"`
 }
 
 func NewDefaultConfig() *Config {
