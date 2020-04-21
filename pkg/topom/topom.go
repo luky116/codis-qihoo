@@ -84,6 +84,9 @@ type Topom struct {
 		servers map[string]*PikaInfo
 		status map[string]*PikaPing
 		offLine map[int]*Offline
+		downAfterPeriod int64
+		infoPeriod time.Duration
+		pingPeriod time.Duration
 	}
 }
 
@@ -125,6 +128,9 @@ func New(client models.Client, config *Config) (*Topom, error) {
 	s.manager.redisp = redis.NewPool(config.ProductAuth, time.Second*5)
 	s.manager.servers = make(map[string]*PikaInfo)
 	s.manager.offLine = make(map[int]*Offline)
+	s.manager.pingPeriod = config.ManagerPingPeriod
+	s.manager.downAfterPeriod = config.ManagerDownAfter
+	s.manager.infoPeriod = config.ManagerInfoPeriod
 
 	if err := s.setup(config); err != nil {
 		s.Close()

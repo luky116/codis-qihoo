@@ -38,3 +38,7 @@ sentinel_failover_timeout = "5m"
 sentinel_notification_script = ""
 sentinel_client_reconfig_script = ""
 
+# set configs for manager
+manager_ping_period = 1000
+manager_info_period = 1000
+manager_down_after = 5

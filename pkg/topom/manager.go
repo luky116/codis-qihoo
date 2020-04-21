@@ -9,9 +9,6 @@ import (
 	"time"
 )
 
-const  donwAfterPeriod = 5
-const  infoPeriod = 1000
-const  pingPeriod = 1000
 
 type PikaInfo struct {
 	Table map[int]*redis.InfoTable
@@ -82,7 +79,6 @@ func (s *Topom) RefreshPikaInfo(timeout time.Duration) (*sync2.Future, error) {
 	for _, g := range ctx.group {
 		for _, x := range g.Servers {
 			goInfo(x.Addr, func(addr string) (*PikaInfo, error) {
-				log.Info("info slot")
 				m, err := s.manager.redisp.InfoSlot(addr)
 				if err != nil {
 					return nil, err
@@ -198,8 +194,10 @@ func (s *Topom) PikaPing(timeout time.Duration) (*sync2.Future, error) {
 func (s *Topom) Manager() {
 	down := make(chan int)
 	defer close(down)
-	go s.PingServer(pingPeriod, down)
-	go s.InfoServer(infoPeriod)
+	s.mu.Lock()
+	go s.PingServer(s.manager.pingPeriod, down)
+	go s.InfoServer(s.manager.infoPeriod)
+	s.mu.Unlock()
 	for _ = range down {
 		if s.GetManager() == false {
 			break
@@ -256,7 +254,7 @@ func (s *Topom) HandleOffline() error {
 			}
 			if s.manager.offLine[p.Gid].Action == models.ActionNothing {
 				log.Infof("saved falltime [%d]",s.manager.offLine[p.Gid].Servers[p.ServerId].FailTime )
-				if p.UnixTime - s.manager.offLine[p.Gid].Servers[p.ServerId].FailTime > donwAfterPeriod {
+				if p.UnixTime - s.manager.offLine[p.Gid].Servers[p.ServerId].FailTime > s.manager.downAfterPeriod {
 					log.Warnf("Group-[%d] server-[%s] objective down", p.Gid, p.Addr)
 					if ctx.group[p.Gid].Servers[0].Addr == p.Addr {
 						s.manager.offLine[p.Gid].Action = models.ActionPreparing
@@ -306,13 +304,18 @@ func (s *Topom) HandleMigrate(gid int) error {
 	t := g.Servers[1:]
 	for i, server := range t {
 		if pikaInfo[server.Addr].Timeout == true {
-			log.Warnf("group-[%d] slave-[%s] has been timeout,it will not be migrate", gid, server.Addr)
+			log.Infof("group-[%d] slave-[%s] has been timeout,it will not be migrate", gid, server.Addr)
+			continue
 			//break
 		}
 		slaves[i] = Slave{Addr: server.Addr}
 	}
-	log.Info("get all valuable slaves ")
-	log.Println(slaves)
+	if len(slaves) == 0 {
+		s.mu.Lock()
+		s.manager.offLine[gid].Action = models.ActionNothing
+		s.mu.Unlock()
+		return nil
+	}
 	masterLog := make(map[int]redis.InfoTable)
 	for _, slave := range slaves {
 		for  t := range pikaInfo[slave.Addr].Table {
@@ -321,16 +324,15 @@ func (s *Topom) HandleMigrate(gid int) error {
 				masterLog[t] = redis.InfoTable{Slot: slot}
 			}
 			for j := range pikaInfo[slave.Addr].Table[t].Slot {
-				if _, ok :=masterLog[t].Slot[j]; ok ==false{
+				if _, ok := masterLog[t].Slot[j]; ok == false {
 					masterLog[t].Slot[j] = pikaInfo[slave.Addr].Table[t].Slot[j]
 					masterLog[t].Slot[j].MasterAddr = slave.Addr
-					break
+					continue
 				}
 				if pikaInfo[slave.Addr].Table[t].Slot[j].Consensus == false {
 					if pikaInfo[slave.Addr].Table[t].Slot[j].FileNum > masterLog[t].Slot[j].FileNum {
 						masterLog[t].Slot[j] = pikaInfo[slave.Addr].Table[t].Slot[j]
 						masterLog[t].Slot[j].MasterAddr = slave.Addr
-						break
 					}
 					if pikaInfo[slave.Addr].Table[t].Slot[j].FileNum == masterLog[t].Slot[j].FileNum && pikaInfo[slave.Addr].Table[t].Slot[j].Offset > masterLog[t].Slot[j].Offset {
 						masterLog[t].Slot[j] = pikaInfo[slave.Addr].Table[t].Slot[j]
@@ -340,13 +342,11 @@ func (s *Topom) HandleMigrate(gid int) error {
 					if pikaInfo[slave.Addr].Table[t].Slot[j].Term > masterLog[t].Slot[j].Term {
 						masterLog[t].Slot[j] = pikaInfo[slave.Addr].Table[t].Slot[j]
 						masterLog[t].Slot[j].MasterAddr = slave.Addr
-						break
 					}
 					if pikaInfo[slave.Addr].Table[t].Slot[j].Term == masterLog[t].Slot[j].Term && pikaInfo[slave.Addr].Table[t].Slot[j].Index > masterLog[t].Slot[j].Index {
 						masterLog[t].Slot[j] = pikaInfo[slave.Addr].Table[t].Slot[j]
 						masterLog[t].Slot[j].MasterAddr = slave.Addr
 					}
-
 				}
 			}
 		}
@@ -369,7 +369,7 @@ func (s *Topom) HandleMigrate(gid int) error {
 	}
 	log.Warnf("server-[%s] will be new master", slaves[master].Addr)
 	for i, t := range pikaInfo[slaves[master].Addr].Table {
-		if err := s.manager.redisp.SlveofNoOne(slaves[master].Addr, i); err !=nil {
+		if err := s.manager.redisp.SlotSlaveofAll(slaves[master].Addr, "no:one", i); err !=nil {
 			log.Warnf("group-[%d] addr-[%s] slaveof no one error:%s", gid, slaves[master].Addr, err)
 		}
 		for j, slot := range t.Slot {
@@ -381,42 +381,39 @@ func (s *Topom) HandleMigrate(gid int) error {
 		}
 	}
 	log.Infof("group-[%d] new master-[%s] wait for sync", gid, slaves[master].Addr)
-	var done bool
+	 done := true
 	for s.IsOnline(){
-		log.Info("sleep 1s")
 		time.Sleep(time.Second)
 		s.mu.Lock()
-		log.Infof("master addr :%s ", slaves[master].Addr)
-		log.Println( s.manager.servers[slaves[master].Addr].Table)
-		for i, t := range s.manager.servers[slaves[master].Addr].Table {
+
+		for i, t := range masterLog {
 			for j, slot := range t.Slot {
-				log.Println(slot.FileNum)
-				log.Println(pikaInfo[slaves[master].Addr].Table[i].Slot[j].FileNum)
-				log.Println(slot.FileNum)
-				log.Println(pikaInfo[slaves[master].Addr].Table[i].Slot[j].FileNum)
-				log.Infof("src filenum %d,slot %d ;des file %d slot %d",slot.FileNum,slot.Offset,pikaInfo[slaves[master].Addr].Table[i].Slot[j].FileNum,pikaInfo[slaves[master].Addr].Table[i].Slot[j].Offset )
-				if slot.FileNum != pikaInfo[slaves[master].Addr].Table[i].Slot[j].FileNum {
-					done = false
-					break
+				syncMaster := slot.MasterAddr
+				if slaves[master].Addr != syncMaster {
+					if newMaster, ok := s.manager.servers[syncMaster].Table[i].Slot[j].Slave[slaves[master].Addr]; ok == true {
+						if newMaster.Lag != 0 {
+							done = false
+							break
+						}
+					} else {
+						log.Warnf("new master-[%s] table-[%d slot-[%d]]can not sync to server-[%s]", slaves[master].Addr, i, j, syncMaster)
+						done = false
+					}
+
 				}
-				if slot.Offset != pikaInfo[slaves[master].Addr].Table[i].Slot[j].Offset {
-					done = false
-					break
-				}
-				done = true
 			}
 		}
 		s.mu.Unlock()
 		if done == true {
 			log.Warnf("group-[%d] server-[%s] lag has been 0, other slave try to slaveof new master", gid, slaves[master].Addr)
 			for _, slave := range slaves {
-				if slaves[master].Addr != slave.Addr {
-					for  t := range pikaInfo[slave.Addr].Table {
-						if err := s.manager.redisp.SlveofNoOne(slave.Addr, t); err != nil {
-							log.Warnf("group-[%d] addr-[%s] slaveof no one error:%s", gid, slaves[master].Addr, err)
-							break
-						}
-						if err := s.manager.redisp.SlotSlaveofAll(slave.Addr, slaves[master].Addr, t); err !=nil {
+				for  t := range pikaInfo[slave.Addr].Table {
+					if err := s.manager.redisp.SlotSlaveofAll(slave.Addr, "no:one", t); err != nil {
+						log.Warnf("group-[%d] addr-[%s] slaveof no one error:%s", gid, slaves[master].Addr, err)
+						break
+					}
+					if slaves[master].Addr != slave.Addr {
+						if err := s.manager.redisp.SlotSlaveofAll(slave.Addr, slaves[master].Addr, t); err != nil {
 							log.Warnf("group-[%d] addr-[%s] slotsslaveof all table-[%d] error:%s", gid, slaves[master].Addr, t, err)
 						}
 					}

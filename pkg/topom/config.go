@@ -5,6 +5,7 @@ package topom
 
 import (
 	"bytes"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -54,6 +55,11 @@ sentinel_down_after = "30s"
 sentinel_failover_timeout = "5m"
 sentinel_notification_script = ""
 sentinel_client_reconfig_script = ""
+
+# set configs for manager
+manager_ping_period = 1000
+manager_info_period = 1000
+manager_down_after = 5
 `
 
 type Config struct {
@@ -82,6 +88,10 @@ type Config struct {
 	SentinelFailoverTimeout      timesize.Duration `toml:"sentinel_failover_timeout" json:"sentinel_failover_timeout"`
 	SentinelNotificationScript   string            `toml:"sentinel_notification_script" json:"sentinel_notification_script"`
 	SentinelClientReconfigScript string            `toml:"sentinel_client_reconfig_script" json:"sentinel_client_reconfig_script"`
+
+	ManagerPingPeriod			time.Duration	`toml:"manager_ping_period" json:"manager_ping_perido"`
+	ManagerInfoPeriod			time.Duration	`toml:"manager_info_period" json:"manager_info_perido"`
+	ManagerDownAfter			int64	`toml:"manager_down_after_period" json:"manager_down_after_perido"`
 }
 
 func NewDefaultConfig() *Config {
@@ -156,6 +166,15 @@ func (c *Config) Validate() error {
 	}
 	if c.SentinelFailoverTimeout <= 0 {
 		return errors.New("invalid sentinel_failover_timeout")
+	}
+	if c.ManagerDownAfter <= 0 {
+		return errors.New("invalid mamager_down_after")
+	}
+	if c.ManagerInfoPeriod <= 0 {
+		return errors.New("invalid mamager_info_period")
+	}
+	if c.ManagerPingPeriod <= 0 {
+		return errors.New("invalid mamager_ping_period")
 	}
 	return nil
 }

@@ -5,7 +5,6 @@ package redis
 
 import (
 	"container/list"
-	"fmt"
 	"github.com/CodisLabs/codis/pkg/utils/log"
 	"net"
 	"strconv"
@@ -47,7 +46,7 @@ type InfoSlot struct {
 	Term       int
 	Index      int
 	Role       string
-	Slave      []Slave
+	Slave      map[string]*Slave
 	MasterAddr string
 }
 
@@ -191,13 +190,11 @@ func (c *Client) Info() (map[string]string, error) {
 
 */
 func (c *Client) InfoSlot() (map[int]*InfoTable, error) {
-	log.Info("send pkcluster info ")
 	text, err := redigo.String(c.Do("pkcluster", "info", "slot"))
 	if err != nil {
 		log.Infof("send pkcluster info err: %s",errors.Trace(err))
 		return nil, errors.Trace(err)
 	}
-	log.Infof("info: %s",text)
 	chunk := strings.Split(text, "\r\n\r\n")
 	table := make(map [int]*InfoTable)
 	var tid int
@@ -258,30 +255,33 @@ func (c *Client) InfoSlot() (map[int]*InfoTable, error) {
 
 			kv = strings.SplitN(line[base + 1], ":", 2)
 			infoSlot.Role = strings.TrimSpace(kv[1])
-
-			kv = strings.SplitN(line[base + 2], ":", 2)
-			slaves := strings.TrimSpace(kv[1])
-			var slaveNum int
-			if m, err := strconv.Atoi(slaves); err == nil {
-				slaveNum = m
-			} else {
-				return nil, err
-			}
-			slave := make([]Slave, slaveNum)
-			for i := range slave {
-				kv := strings.SplitN(line[base + 3 + i * 3], ":", 2)
-				slave[i].Addr =  strings.TrimSpace(kv[1])
-				kv = strings.SplitN(line[base + 3 + i * 3 + 1], ":", 2)
-				slave[i].Status =  strings.TrimSpace(kv[1])
-				kv = strings.SplitN(line[base + 3 + i * 3 + 2], ":", 2)
-				lag :=  strings.TrimSpace(kv[1])
-				if t, err := strconv.Atoi(lag); err == nil {
-					slave[i].Lag = t
+			if infoSlot.Role == "Master" {
+				kv = strings.SplitN(line[base+2], ":", 2)
+				slaves := strings.TrimSpace(kv[1])
+				var slaveNum int
+				if m, err := strconv.Atoi(slaves); err == nil {
+					slaveNum = m
 				} else {
 					return nil, err
 				}
+				servers := make(map[string]*Slave)
+				for i := 0; i < slaveNum; i++ {
+					slave := &Slave{}
+					kv := strings.SplitN(line[base+3+i*3], ":", 2)
+					slave.Addr = strings.TrimSpace(kv[1])
+					kv = strings.SplitN(line[base+3+i*3+1], ":", 2)
+					slave.Status = strings.TrimSpace(kv[1])
+					kv = strings.SplitN(line[base+3+i*3+2], ":", 2)
+					lag := strings.TrimSpace(kv[1])
+					if t, err := strconv.Atoi(lag); err == nil {
+						slave.Lag = t
+					} else {
+						return nil, err
+					}
+					servers[slave.Addr] = slave
+				}
+				infoSlot.Slave = servers
 			}
-			infoSlot.Slave = slave
 			table[tid].Slot[infoSlot.Slot] = &infoSlot
 		}
 	}
@@ -349,45 +349,23 @@ func (c *Client) InfoFull() (map[string]string, error) {
 	}
 }
 
-func (c *Client) SlaveofNoOne(addr string, t int) error {
+func (c *Client) SlotSlaveof(addr string, s, t int) error {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return errors.Trace(err)
 	}
-	cmd := fmt.Sprintf("PKCLUSTER SLOTSSLOVEOF NO ONE ALL %d",t)
-	if _, err := c.Do(cmd, host, port, t); err != nil {
+	if _, err := c.Do("pkcluster", "slotsslaveof", host, port, s, t); err != nil {
 		return errors.Trace(err)
 	}
 	return nil
 }
 
-func (c *Client) SlotSlaveof(addr, mAddr string, s, t int) error {
+func (c *Client) SlotSlaveofAll(addr string, t int) error {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return errors.Trace(err)
 	}
-	mHost, mPort, err := net.SplitHostPort(mAddr)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	cmd := fmt.Sprintf("PKCLUSTER SLOTSSLOVEOF %s %s %d %d", mHost, mPort, s, t)
-	if _, err := c.Do(cmd, host, port, t); err != nil {
-		return errors.Trace(err)
-	}
-	return nil
-}
-
-func (c *Client) SlotSlaveofAll(addr, mAddr string, t int) error {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	mHost, mPort, err := net.SplitHostPort(mAddr)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	cmd := fmt.Sprintf("PKCLUSTER SLOTSSLOVEOF %s %s all %d",mHost, mPort, t)
-	if _, err := c.Do(cmd, host, port, t); err != nil {
+	if _, err := c.Do("pkcluster", "slotsslaveof", host, port, "all", t); err != nil {
 		return errors.Trace(err)
 	}
 	return nil
@@ -665,22 +643,13 @@ func (p *Pool) Ping(addr string) ( bool,  error) {
 	return c.Ping()
 }
 
-func (p *Pool) SlveofNoOne(addr string, tid int) error {
-	c, err := p.GetClient(addr)
-	if err != nil {
-		return  err
-	}
-	defer p.PutClient(c)
-	return c.SlaveofNoOne(addr, tid)
-}
-
 func (p *Pool) SlotSlaveof(addr, mAddr string, sid, tid int) error {
 	c, err := p.GetClient(addr)
 	if err != nil {
 		return  err
 	}
 	defer p.PutClient(c)
-	return c.SlotSlaveof(addr, mAddr, sid, tid)
+	return c.SlotSlaveof(mAddr, sid, tid)
 }
 
 func (p *Pool) SlotSlaveofAll(addr,mAddr string, tid int) error {
@@ -689,7 +658,7 @@ func (p *Pool) SlotSlaveofAll(addr,mAddr string, tid int) error {
 		return  err
 	}
 	defer p.PutClient(c)
-	return c.SlotSlaveofAll(addr, mAddr, tid)
+	return c.SlotSlaveofAll(mAddr, tid)
 }
 
 type InfoCache struct {
