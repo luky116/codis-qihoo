@@ -221,7 +221,6 @@ func (s *Topom) PingServer(interval time.Duration, down chan int)  {
 }
 
 func (s *Topom) InfoServer(interval time.Duration)  {
-	log.Info("get into infoserver")
 	for s.GetManager() == true {
 		w, err := s.RefreshPikaInfo(time.Second)
 		if err != nil {
