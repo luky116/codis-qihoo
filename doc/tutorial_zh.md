@@ -693,18 +693,14 @@ end 为迁移slot的结束id
 
 gid 为目的group的id
 
-#### 添加哨兵
+#### manager模块
+我们再dashboard中开发了manager模块来代替原有方案中哨兵的功能，默认是不开启的。manager模块监控各个pika的在线状况。
+当某个group的主超时manager_down_after的时间后，manager认为这个group的主objective down了。从而在剩余的从节点中选择新的主。
 ```
-./bin/codis-admin  --dashboard=127.0.0.1:18080 --sentinel-add --addr=10.208.40.79:3456
+./bin/codis-admin  --dashboard=10.208.40.79:18080  --manager-status
 ```
-addr 为哨兵的端口地址
-
-#### 删除哨兵
+该命令查看manager模块是否开启
 ```
-./bin/codis-admin  --dashboard=127.0.0.1:18080 --sentinel-del --addr=10.208.40.79:3456
+./bin/codis-admin -v --dashboard=10.208.40.79:18080  --set-manager --enable|disable
 ```
-#### 主从切换
-```
-./bin/codis-admin  --dashboard=127.0.0.1:18080 --promote-server --gid=1 --addr=10.208.40.79:9221
-```
-
+该命令来开启|关闭 manager模块
