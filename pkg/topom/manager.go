@@ -243,19 +243,18 @@ func (s *Topom) HandleOffline() error {
 	}
 	for _, p := range s.manager.status {
 		if p.Offline == true {
-			log.Infof("Group-[%d] server-[%s] subjective down ", p.Gid, p.Addr)
 			if _, ok := s.manager.offLine[p.Gid]; ok == false {
 				servers := make(map[int]*Server)
 				s.manager.offLine[p.Gid] = &Offline{Servers: servers}
 			}
 			if _, ok:= s.manager.offLine[p.Gid].Servers[p.ServerId]; ok == false  {
+				log.Infof("Group-[%d] server-[%s] subjective down ", p.Gid, p.Addr)
 				s.manager.offLine[p.Gid].Servers[p.ServerId] = &Server{FailTime: p.UnixTime, Status: p}
-				break
+				continue
 			}
-			if s.manager.offLine[p.Gid].Action == models.ActionNothing {
-				log.Infof("saved falltime [%d]",s.manager.offLine[p.Gid].Servers[p.ServerId].FailTime )
-				if p.UnixTime - s.manager.offLine[p.Gid].Servers[p.ServerId].FailTime > s.manager.downAfterPeriod {
-					log.Warnf("Group-[%d] server-[%s] objective down", p.Gid, p.Addr)
+			if p.UnixTime - s.manager.offLine[p.Gid].Servers[p.ServerId].FailTime > s.manager.downAfterPeriod {
+				log.Warnf("Group-[%d] server-[%s] objective down", p.Gid, p.Addr)
+				if s.manager.offLine[p.Gid].Action == models.ActionNothing {
 					if ctx.group[p.Gid].Servers[0].Addr == p.Addr {
 						s.manager.offLine[p.Gid].Action = models.ActionPreparing
 						log.Warnf("Group-[%d] master server-[%s] down", p.Gid, p.Addr)
@@ -265,12 +264,13 @@ func (s *Topom) HandleOffline() error {
 			}
 		} else {
 			if _, ok := s.manager.offLine[p.Gid]; ok == false {
-				break
+				continue
 			}
 			if _, ok := s.manager.offLine[p.Gid].Servers[p.ServerId]; ok == false {
-				break
+				continue
 			}
-				delete(s.manager.offLine[p.Gid].Servers, p.ServerId)
+			log.Infof("Group-[%d] server-[%s] up", p.Gid, p.Addr)
+			delete(s.manager.offLine[p.Gid].Servers, p.ServerId)
 		}
 	}
 	return nil
