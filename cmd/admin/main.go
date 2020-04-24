@@ -33,8 +33,9 @@ Usage:
 	codis-admin [-v] --dashboard=ADDR            --remove-proxy  (--addr=ADDR|--token=TOKEN|--pid=ID)       [--force]
 	codis-admin [-v] --dashboard=ADDR            --reinit-proxy  (--addr=ADDR|--token=TOKEN|--pid=ID|--all) [--force]
 	codis-admin [-v] --dashboard=ADDR            --proxy-status
-	codis-admin [-v] --dashboard=ADDR            --create-table   --name=table-name --num=slots-num
+	codis-admin [-v] --dashboard=ADDR            --create-table   --name=table-name --num=slots-num		[--tid=ID]
 	codis-admin [-v] --dashboard=ADDR            --list-table   
+	codis-admin [-v] --dashboard=ADDR            --rename-table  --name=new-name --tid=ID  
 	codis-admin [-v] --dashboard=ADDR            --remove-table   --tid=ID   
 	codis-admin [-v] --dashboard=ADDR            --list-group
 	codis-admin [-v] --dashboard=ADDR            --create-group   --gid=ID

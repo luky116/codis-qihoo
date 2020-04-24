@@ -22,6 +22,7 @@ type context struct {
 	group map[int]*models.Group
 	proxy map[string]*models.Proxy
 	table map[int]*models.Table
+	tableMeta *models.TableMeta
 
 	sentinel *models.Sentinel
 

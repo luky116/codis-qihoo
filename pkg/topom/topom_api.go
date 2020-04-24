@@ -106,6 +106,7 @@ func newApiServer(t *Topom) http.Handler {
 		r.Group("/table", func(r martini.Router) {
 			r.Put("/create/:xauth/:name/:num", api.CreateTable)
 			r.Put("/remove/:xauth/:tid", api.RemoveTable)
+			r.Put("/rename/:xauth/:tid/:name", api.RenameTable)
 			r.Get("/list/:xauth/:tid", api.ListTable)
 			r.Get("/get/:xauth/:tid", api.GetTable)
 
@@ -516,6 +517,25 @@ func (s *apiServer) RemoveTable(params martini.Params) (int, string) {
 		return rpc.ApiResponseError(err)
 	}
 	if err := s.topom.RemoveTable(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson("OK")
+	}
+}
+
+func (s *apiServer) RenameTable(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	name, err := s.parseString(params, "name")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if err := s.topom.RenameTable(tid, name); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
@@ -1085,6 +1105,11 @@ func (c *ApiClient) CreateTable(name string, num int)  error {
 
 func (c *ApiClient) RemoveTable(tid int)  error {
 	url := c.encodeURL("/api/topom/table/remove/%s/%d", c.xauth, tid)
+	return  rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) RenameTable(tid int, name string)  error {
+	url := c.encodeURL("/api/topom/table/remove/%s/%d/%s", c.xauth, tid, name)
 	return  rpc.ApiPutJson(url, nil, nil)
 }
 

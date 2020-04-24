@@ -38,6 +38,10 @@ func TablePath(product string, tid int) string {
 	return filepath.Join(CodisDir, product, "table", fmt.Sprintf("table-%04d", tid), "meta")
 }
 
+func TableMetaPath(product string) string {
+	return filepath.Join(CodisDir, product, "tableMeta")
+}
+
 func TableSlotDir(product string, tid int) string {
 	return filepath.Join(CodisDir, product, "table", fmt.Sprintf("table-%04d", tid))
 }
@@ -129,6 +133,10 @@ func (s *Store) GroupPath(gid int) string {
 
 func (s *Store) TablePath(tid int) string {
 	return TablePath(s.product, tid)
+}
+
+func (s *Store) TableMetaPath() string {
+	return TableMetaPath(s.product)
 }
 
 func (s *Store) ProxyPath(token string) string {
@@ -295,6 +303,26 @@ func (s *Store) DeleteTable(tid int) error {
 		return err
 	}
 	return s.client.Delete(s.TableSlotDir(tid))
+}
+
+func (s *Store) LoadTableMeta(must bool) (*TableMeta, error) {
+	b, err := s.client.Read(s.TableMetaPath(), must)
+	if err != nil || b == nil {
+		return nil, err
+	}
+	t := &TableMeta{}
+	if err := jsonDecode(t, b); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (s *Store) UpdateTableMeta(t *TableMeta) error {
+	return s.client.Update(s.TableMetaPath(), t.Encode())
+}
+
+func (s *Store) DeleteTableMeta() error {
+	return s.client.Delete(s.TableMetaPath())
 }
 
 func (s *Store) ListProxy() (map[string]*Proxy, error) {

@@ -38,6 +38,12 @@ func (s *Topom) dirtyTableCache(tid int) {
 	})
 }
 
+func (s *Topom) dirtyTableMetaCache() {
+	s.cache.hooks.PushBack(func() {
+		s.cache.tableMeta = nil
+	})
+}
+
 func (s *Topom) dirtyProxyCache(token string) {
 	s.cache.hooks.PushBack(func() {
 		if s.cache.proxy != nil {
@@ -58,6 +64,7 @@ func (s *Topom) dirtyCacheAll() {
 		s.cache.group = nil
 		s.cache.proxy = nil
 		s.cache.sentinel = nil
+		s.cache.tableMeta = nil
 	})
 }
 
@@ -66,7 +73,14 @@ func (s *Topom) refillCache() error {
 		e := s.cache.hooks.Front()
 		s.cache.hooks.Remove(e).(func())()
 	}
-	if table,err :=s.refillCacheTable(s.cache.table); err !=nil {
+	if tableMeta, err := s.refillCacheTableMeta(s.cache.tableMeta); err != nil {
+		log.ErrorErrorf(err, "store: load table meta failed")
+		return errors.Errorf("store: load table meta failed")
+	} else {
+		s.cache.tableMeta = tableMeta
+	}
+
+	if table,err := s.refillCacheTable(s.cache.table); err != nil {
 		log.ErrorErrorf(err, "store: load table failed")
 		return errors.Errorf("store: load table failed")
 	} else {
@@ -160,6 +174,20 @@ func (s *Topom) refillCacheTable(table map[int]*models.Table) (map[int]*models.T
 		}
 	}
 	return table, nil
+}
+
+func (s *Topom) refillCacheTableMeta(tableMeta *models.TableMeta) (*models.TableMeta, error) {
+	if tableMeta != nil {
+		return tableMeta, nil
+	}
+	p, err := s.store.LoadTableMeta(false)
+	if err != nil {
+		return nil, err
+	}
+	if p != nil {
+		return p, nil
+	}
+	return &models.TableMeta{Id:0}, nil
 }
 
 func (s *Topom) refillCacheGroup(group map[int]*models.Group) (map[int]*models.Group, error) {
@@ -296,6 +324,24 @@ func (s *Topom) storeRemoveTable(t *models.Table) error {
 	if err := s.store.DeleteTable(t.Id); err != nil {
 		log.ErrorErrorf(err, "store: remove table-[%d] failed", t.Id)
 		return errors.Errorf("store: remove table-[%d] failed", t.Id)
+	}
+	return nil
+}
+
+func (s *Topom) storeCreateTableMeta(t *models.TableMeta) error {
+	log.Warnf("create table meta:\n%s", t.Encode())
+	if err := s.store.UpdateTableMeta(t); err != nil {
+		log.ErrorError(err, "store: create table meta failed")
+		return errors.Errorf("store: create table meta failed")
+	}
+	return nil
+}
+
+func (s *Topom) storeUpdateTableMeta(t *models.TableMeta) error {
+	log.Warnf("create table meta:\n%s", t.Encode())
+	if err := s.store.UpdateTableMeta(t); err != nil {
+		log.ErrorError(err, "store: create table meta failed")
+		return errors.Errorf("store: create table meta failed")
 	}
 	return nil
 }

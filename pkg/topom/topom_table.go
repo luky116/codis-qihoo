@@ -4,10 +4,9 @@ import (
 	"github.com/CodisLabs/codis/pkg/models"
 	"github.com/CodisLabs/codis/pkg/utils/errors"
 	"github.com/CodisLabs/codis/pkg/utils/log"
-	"sort"
 )
 
-func (s *Topom) CreateTable(name string, num int)  error {
+func (s *Topom) CreateTable(name string, num ,tid int)  error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ctx, err := s.newContext()
@@ -17,28 +16,30 @@ func (s *Topom) CreateTable(name string, num int)  error {
 	if err := models.ValidateTable(name); err != nil {
 		return  err
 	}
-
-	var ids []int
-	for id,table := range ctx.table  {
-		if name == table.Name {
+	if tid != -1 {
+		if _, ok := ctx.table[tid]; ok == true {
+			return  errors.Errorf("tid-[%d] already exists", tid)
+		}
+		if tid >= ctx.tableMeta.Id {
+			return  errors.Errorf("tid-[%d] is lagre than self-increase Id-[%d],please change tid and retry", tid, ctx.tableMeta.Id)
+		}
+	} else {
+		tid = ctx.tableMeta.Id
+		defer s.dirtyTableMetaCache()
+		tm := &models.TableMeta{Id: tid+1}
+		if err := s.storeCreateTableMeta(tm); err != nil {
+			return err
+		}
+	}
+	for _, t := range ctx.table  {
+		if name == t.Name {
 			return  errors.Errorf("name-[%s] already exists", name)
 		}
-		ids = append(ids, id)
-	}
-	sort.Ints(ids)
-	var tid = 0
-	for _, id := range ids {
-		if id != tid  {
-			break
+		if tid == t.Id {
+			return  errors.Errorf("tid-[%d] already exists", tid)
 		}
-		tid ++
-	}
-
-	if tid > models.MaxTableNum {
-		return  errors.Errorf("invalid table id = %d, out of range", tid)
 	}
 	defer s.dirtyTableCache(tid)
-
 	t := &models.Table{
 		Id:			tid,
 		Name:		name,
@@ -111,7 +112,45 @@ func (s *Topom) RemoveTable(tid int) error {
 	return s.storeRemoveTable(t)
 }
 
+func (s *Topom) RenameTable(tid int, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ctx, err := s.newContext()
+	if err != nil {
+		return  err
+	}
+	if err := models.ValidateTable(name); err != nil {
+		return  err
+	}
+	for _, t := range ctx.table  {
+		if name == t.Name {
+			return  errors.Errorf("name-[%s] already exists", name)
+		}
+	}
+	t, ok := ctx.table[tid]
+	if ok == false {
+		return  errors.Errorf("table-[%d] dose not exist", tid)
+	}
+	defer s.dirtyTableCache(tid)
+	t.Name = name
+	return s.storeUpdateTable(t)
+}
 
+func (s *Topom) GetTableMeta() (int, error){
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ctx, err := s.newContext()
+	if err != nil {
+		return  0, err
+	}
+	return ctx.tableMeta.Id, nil
+}
+
+func (s *Topom) SetTableMeta(id int) error{
+	defer s.dirtyTableMetaCache()
+	tm := &models.TableMeta{Id: id}
+	return s.storeCreateTableMeta(tm)
+}
 
 
 

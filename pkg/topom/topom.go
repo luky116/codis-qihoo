@@ -39,6 +39,7 @@ type Topom struct {
 		proxy map[string]*models.Proxy
 		table map[int]*models.Table
 
+		tableMeta *models.TableMeta
 		sentinel *models.Sentinel
 	}
 
@@ -307,6 +308,7 @@ func (s *Topom) newContext() (*context, error) {
 			ctx.slots = s.cache.slots
 			ctx.group = s.cache.group
 			ctx.proxy = s.cache.proxy
+			ctx.tableMeta = s.cache.tableMeta
 			ctx.sentinel = s.cache.sentinel
 			ctx.hosts.m = make(map[string]net.IP)
 			ctx.method, _ = models.ParseForwardMethod(s.config.MigrationMethod)

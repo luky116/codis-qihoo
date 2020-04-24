@@ -78,6 +78,8 @@ func (t *cmdDashboard) Main(d map[string]interface{}) {
 		fallthrough
 	case d["--remove-table"].(bool):
 		fallthrough
+	case d["--rename-table"].(bool):
+		fallthrough
 	case d["--list-table"].(bool):
 		t.handleTableCommand(d)
 
@@ -704,6 +706,16 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 			log.PanicErrorf(err, "call rpc remove-table to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc remove-table OK")
+	case d["--rename-table"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+		name := utils.ArgumentMust(d, "--name")
+
+		log.Debugf("call rpc rename-table to dashboard %s", t.addr)
+		if err := c.RenameTable(tid, name); err != nil {
+			log.PanicErrorf(err, "call rpc rename-table to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc rename-table OK")
 	case d["--list-table"].(bool):
 
 		log.Debugf("call rpc list-table to dashboard %s", t.addr)

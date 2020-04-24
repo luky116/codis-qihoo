@@ -12,6 +12,14 @@ type Table struct {
 //	Group  []*Group		`json:"groups"`
 }
 
+type TableMeta struct {
+	Id 		int 		`json:"id"`
+}
+
+func (t *TableMeta) Encode() []byte {
+	return jsonEncode(t)
+}
+
 func (t *Table) Encode() []byte {
 	return jsonEncode(t)
 }
