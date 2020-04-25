@@ -21,7 +21,7 @@ func (s *Topom) CreateTable(name string, num ,tid int)  error {
 			return  errors.Errorf("tid-[%d] already exists", tid)
 		}
 		if tid >= ctx.tableMeta.Id {
-			return  errors.Errorf("tid-[%d] is lagre than self-increase Id-[%d],please change tid and retry", tid, ctx.tableMeta.Id)
+			return  errors.Errorf("tid-[%d] is large than self-increase Id-[%d],please change tid and retry", tid, ctx.tableMeta.Id)
 		}
 	} else {
 		tid = ctx.tableMeta.Id

@@ -104,7 +104,7 @@ func newApiServer(t *Topom) http.Handler {
 			r.Get("/info/:addr", api.InfoServer)
 		})
 		r.Group("/table", func(r martini.Router) {
-			r.Put("/create/:xauth/:name/:num", api.CreateTable)
+			r.Put("/create/:xauth/:name/:num/:tid", api.CreateTable)
 			r.Put("/remove/:xauth/:tid", api.RemoveTable)
 			r.Put("/rename/:xauth/:tid/:name", api.RenameTable)
 			r.Get("/list/:xauth/:tid", api.ListTable)
@@ -501,7 +501,11 @@ func (s *apiServer) CreateTable(params martini.Params) (int, string) {
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if  err := s.topom.CreateTable(name, num); err != nil {
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if  err := s.topom.CreateTable(name, num, tid); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
