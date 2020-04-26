@@ -37,6 +37,8 @@ Usage:
 	codis-admin [-v] --dashboard=ADDR            --list-table   
 	codis-admin [-v] --dashboard=ADDR            --rename-table  --name=new-name --tid=ID  
 	codis-admin [-v] --dashboard=ADDR            --remove-table   --tid=ID   
+	codis-admin [-v] --dashboard=ADDR            --get-table-meta
+	codis-admin [-v] --dashboard=ADDR            --set-table-meta   --tid=ID   
 	codis-admin [-v] --dashboard=ADDR            --list-group
 	codis-admin [-v] --dashboard=ADDR            --create-group   --gid=ID
 	codis-admin [-v] --dashboard=ADDR            --remove-group   --gid=ID

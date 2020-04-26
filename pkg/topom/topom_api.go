@@ -107,8 +107,10 @@ func newApiServer(t *Topom) http.Handler {
 			r.Put("/create/:xauth/:name/:num/:tid", api.CreateTable)
 			r.Put("/remove/:xauth/:tid", api.RemoveTable)
 			r.Put("/rename/:xauth/:tid/:name", api.RenameTable)
+			r.Put("/meta/:xauth", api.SetTableMeta)
 			r.Get("/list/:xauth/:tid", api.ListTable)
 			r.Get("/get/:xauth/:tid", api.GetTable)
+			r.Get("/meta/:xauth", api.GetTableMeta)
 
 		})
 		r.Group("/slots", func(r martini.Router) {
@@ -569,6 +571,32 @@ func (s *apiServer) GetTable(params martini.Params) (int, string) {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson(t)
+	}
+}
+
+func (s *apiServer) GetTableMeta(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if t, err := s.topom.GetTableMeta(); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(t)
+	}
+}
+
+func (s *apiServer) SetTableMeta(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if  err := s.topom.SetTableMeta(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson("OK")
 	}
 }
 
@@ -1102,8 +1130,8 @@ func (c *ApiClient) EnableReplicaGroupsAll(value bool) error {
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) CreateTable(name string, num int)  error {
-	url := c.encodeURL("/api/topom/table/create/%s/%s/%d", c.xauth, name, num)
+func (c *ApiClient) CreateTable(name string, num, tid int)  error {
+	url := c.encodeURL("/api/topom/table/create/%s/%s/%d/%d", c.xauth, name, num, tid)
 	return  rpc.ApiPutJson(url, nil, nil)
 }
 
@@ -1114,6 +1142,20 @@ func (c *ApiClient) RemoveTable(tid int)  error {
 
 func (c *ApiClient) RenameTable(tid int, name string)  error {
 	url := c.encodeURL("/api/topom/table/remove/%s/%d/%s", c.xauth, tid, name)
+	return  rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) GetTableMeta()  (int, error) {
+	url := c.encodeURL("/api/topom/table/meta/%s", c.xauth)
+	var meta int
+	if err := rpc.ApiGetJson(url, &meta); err != nil {
+		return 0, err
+	}
+	return meta, nil
+}
+
+func (c *ApiClient) SetTableMeta( tid int)  error {
+	url := c.encodeURL("/api/topom/table/meta/%s/%d", c.xauth, tid)
 	return  rpc.ApiPutJson(url, nil, nil)
 }
 

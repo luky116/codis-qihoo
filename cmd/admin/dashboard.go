@@ -81,6 +81,10 @@ func (t *cmdDashboard) Main(d map[string]interface{}) {
 	case d["--rename-table"].(bool):
 		fallthrough
 	case d["--list-table"].(bool):
+		fallthrough
+	case d["--get-table-meta"].(bool):
+		fallthrough
+	case d["--set-table-meta"].(bool):
 		t.handleTableCommand(d)
 
 	case d["--sentinel-add"].(bool):
@@ -692,8 +696,16 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 
 		name := utils.ArgumentMust(d, "--name")
 		num := utils.ArgumentIntegerMust(d, "--num")
+		tid, err := utils.ArgumentInteger(d, "--tid")
+		if err == false {
+			tid = -1
+		} else {
+			if tid < 0 {
+				log.Panicf("create table tid-[%d] is invalidated", tid)
+			}
+		}
 		log.Debugf("call rpc create-table to dashboard %s", t.addr)
-		if  err := c.CreateTable(name, num); err != nil {
+		if  err := c.CreateTable(name, num, tid); err != nil {
 			log.PanicErrorf(err, "call rpc create-Table to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc create-group OK")
@@ -730,6 +742,28 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 			fmt.Printf("table ID: %d, table name: %s, slots num: %d\n", t.Id, t.Name, t.MaxSlotMum)
 		}
 		fmt.Println()
+	case d["--set-table-meta"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+
+		log.Debugf("call rpc set-table-meta to dashboard %s", t.addr)
+		if err := c.SetTableMeta(tid); err != nil {
+			log.PanicErrorf(err, "call rpc set-table-meta to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc set-table-meta OK")
+	case d["--get-table-meta"].(bool):
+		log.Debugf("call rpc get table meta to dashboard %s", t.addr)
+		o, err := c.GetTableMeta()
+		if err != nil {
+			log.PanicErrorf(err, "call rpc get table meta to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc get OK")
+
+		b, err := json.MarshalIndent(o, "", "    ")
+		if err != nil {
+			log.PanicErrorf(err, "json marshal failed")
+		}
+		fmt.Println(string(b))
 	}
 }
 
