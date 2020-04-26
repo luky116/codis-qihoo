@@ -6,7 +6,7 @@ import (
 	"github.com/CodisLabs/codis/pkg/utils/log"
 )
 
-func (s *Topom) CreateTable(name string, num ,tid int)  error {
+func (s *Topom) CreateTable(name string, num ,id int)  error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ctx, err := s.newContext()
@@ -16,20 +16,17 @@ func (s *Topom) CreateTable(name string, num ,tid int)  error {
 	if err := models.ValidateTable(name); err != nil {
 		return  err
 	}
-	if tid != -1 {
-		if _, ok := ctx.table[tid]; ok == true {
-			return  errors.Errorf("tid-[%d] already exists", tid)
+	var tid int
+	if id != -1 {
+		if _, ok := ctx.table[id]; ok == true {
+			return  errors.Errorf("tid-[%d] already exists", id)
 		}
-		if tid >= ctx.tableMeta.Id {
-			return  errors.Errorf("tid-[%d] is large than self-increase Id-[%d],please change tid and retry", tid, ctx.tableMeta.Id)
+		if id >= ctx.tableMeta.Id {
+			return  errors.Errorf("tid-[%d] is large than self-increase Id-[%d],please change tid and retry", id, ctx.tableMeta.Id)
 		}
+		tid = id
 	} else {
 		tid = ctx.tableMeta.Id
-		defer s.dirtyTableMetaCache()
-		tm := &models.TableMeta{Id: tid+1}
-		if err := s.storeCreateTableMeta(tm); err != nil {
-			return err
-		}
 	}
 	for _, t := range ctx.table  {
 		if name == t.Name {
@@ -37,6 +34,13 @@ func (s *Topom) CreateTable(name string, num ,tid int)  error {
 		}
 		if tid == t.Id {
 			return  errors.Errorf("tid-[%d] already exists", tid)
+		}
+	}
+	if id == -1 {
+		defer s.dirtyTableMetaCache()
+		tm := &models.TableMeta{Id: tid+1}
+		if err := s.storeCreateTableMeta(tm); err != nil {
+			return err
 		}
 	}
 	defer s.dirtyTableCache(tid)

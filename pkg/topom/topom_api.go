@@ -1141,7 +1141,7 @@ func (c *ApiClient) RemoveTable(tid int)  error {
 }
 
 func (c *ApiClient) RenameTable(tid int, name string)  error {
-	url := c.encodeURL("/api/topom/table/remove/%s/%d/%s", c.xauth, tid, name)
+	url := c.encodeURL("/api/topom/table/rename/%s/%d/%s", c.xauth, tid, name)
 	return  rpc.ApiPutJson(url, nil, nil)
 }
 
