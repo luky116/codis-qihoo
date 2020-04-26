@@ -107,7 +107,7 @@ func newApiServer(t *Topom) http.Handler {
 			r.Put("/create/:xauth/:name/:num/:tid", api.CreateTable)
 			r.Put("/remove/:xauth/:tid", api.RemoveTable)
 			r.Put("/rename/:xauth/:tid/:name", api.RenameTable)
-			r.Put("/meta/:xauth", api.SetTableMeta)
+			r.Put("/meta/:xauth/:tid", api.SetTableMeta)
 			r.Get("/list/:xauth/:tid", api.ListTable)
 			r.Get("/get/:xauth/:tid", api.GetTable)
 			r.Get("/meta/:xauth", api.GetTableMeta)
