@@ -6,7 +6,7 @@ import (
 	"github.com/CodisLabs/codis/pkg/utils/log"
 )
 
-func (s *Topom) CreateTable(name string, num ,id int)  error {
+func (s *Topom) CreateTable(name string, num ,id int, auth string)  error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ctx, err := s.newContext()
@@ -48,6 +48,7 @@ func (s *Topom) CreateTable(name string, num ,id int)  error {
 		Id:			tid,
 		Name:		name,
 		MaxSlotMum: num,
+		Auth:		auth,
 	}
 	if err := s.storeCreateTable(t); err != nil {
 		return err
@@ -116,7 +117,7 @@ func (s *Topom) RemoveTable(tid int) error {
 	return s.storeRemoveTable(t)
 }
 
-func (s *Topom) RenameTable(tid int, name string) error {
+func (s *Topom) RenameTable(tid int, name, auth string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ctx, err := s.newContext()
@@ -126,18 +127,28 @@ func (s *Topom) RenameTable(tid int, name string) error {
 	if err := models.ValidateTable(name); err != nil {
 		return  err
 	}
-	for _, t := range ctx.table  {
-		if name == t.Name {
-			return  errors.Errorf("name-[%s] already exists", name)
-		}
-	}
 	t, ok := ctx.table[tid]
 	if ok == false {
 		return  errors.Errorf("table-[%d] dose not exist", tid)
 	}
+	for i := range ctx.table  {
+		if i != tid {
+			if name == ctx.table[i].Name {
+				return  errors.Errorf("name-[%s] already exists", name)
+			}
+		}
+	}
 	defer s.dirtyTableCache(tid)
 	t.Name = name
-	return s.storeUpdateTable(t)
+	t.Auth = auth
+	if err := s.storeUpdateTable(t); err != nil {
+		return err
+	}
+	if err := s.syncFillTable(ctx, t); err != nil {
+		log.Warnf("table-[%s] tid-[%d] sync to proxy failed", t.Name, t.Id)
+		return  err
+	}
+	return nil
 }
 
 func (s *Topom) GetTableMeta() (int, error){

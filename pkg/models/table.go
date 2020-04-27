@@ -8,6 +8,7 @@ type Table struct {
 	Id		int			`json:"id"`
 	Name	string		`json:"name"`
 	MaxSlotMum int		`json:"max_slot_mum"`
+	Auth    string		`json:"auth,omitempty"`
 //	Slots   []*Slot 	`json:"slots"`
 //	Group  []*Group		`json:"groups"`
 }

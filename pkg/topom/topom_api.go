@@ -104,9 +104,9 @@ func newApiServer(t *Topom) http.Handler {
 			r.Get("/info/:addr", api.InfoServer)
 		})
 		r.Group("/table", func(r martini.Router) {
-			r.Put("/create/:xauth/:name/:num/:tid", api.CreateTable)
+			r.Put("/create/:xauth/:name/:num/:tid/:auth", api.CreateTable)
 			r.Put("/remove/:xauth/:tid", api.RemoveTable)
-			r.Put("/rename/:xauth/:tid/:name", api.RenameTable)
+			r.Put("/rename/:xauth/:tid/:name/:auth", api.RenameTable)
 			r.Put("/meta/:xauth/:tid", api.SetTableMeta)
 			r.Get("/list/:xauth/:tid", api.ListTable)
 			r.Get("/get/:xauth/:tid", api.GetTable)
@@ -507,7 +507,11 @@ func (s *apiServer) CreateTable(params martini.Params) (int, string) {
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if  err := s.topom.CreateTable(name, num, tid); err != nil {
+	auth, err := s.parseString(params, "auth")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if  err := s.topom.CreateTable(name, num, tid, auth); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
@@ -541,7 +545,11 @@ func (s *apiServer) RenameTable(params martini.Params) (int, string) {
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if err := s.topom.RenameTable(tid, name); err != nil {
+	auth, err := s.parseString(params, "auth")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if err := s.topom.RenameTable(tid, name, auth); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
@@ -1130,8 +1138,8 @@ func (c *ApiClient) EnableReplicaGroupsAll(value bool) error {
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) CreateTable(name string, num, tid int)  error {
-	url := c.encodeURL("/api/topom/table/create/%s/%s/%d/%d", c.xauth, name, num, tid)
+func (c *ApiClient) CreateTable(name string, num, tid int, auth string)  error {
+	url := c.encodeURL("/api/topom/table/create/%s/%s/%d/%d/%s", c.xauth, name, num, tid, auth)
 	return  rpc.ApiPutJson(url, nil, nil)
 }
 
@@ -1140,8 +1148,8 @@ func (c *ApiClient) RemoveTable(tid int)  error {
 	return  rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) RenameTable(tid int, name string)  error {
-	url := c.encodeURL("/api/topom/table/rename/%s/%d/%s", c.xauth, tid, name)
+func (c *ApiClient) RenameTable(tid int, name, auth string)  error {
+	url := c.encodeURL("/api/topom/table/rename/%s/%d/%s/%s", c.xauth, tid, name, auth)
 	return  rpc.ApiPutJson(url, nil, nil)
 }
 

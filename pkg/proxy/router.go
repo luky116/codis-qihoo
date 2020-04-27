@@ -72,7 +72,9 @@ func (s *Router) GetSlots() []*models.Slot {
 	var slots []*models.Slot
 	for i := range s.slots {
 		for j := range s.slots[i] {
-			slots = append(slots, s.slots[i][j].snapshot())
+			m  := s.slots[i][j].snapshot()
+			m.TableId  = i
+			slots = append(slots, m)
 		}
 	}
 	return slots
@@ -85,7 +87,9 @@ func (s *Router) GetSlot(tid, sid int) *models.Slot {
 		return nil
 	}
 	slot := &s.slots[tid][sid]
-	return slot.snapshot()
+	m := slot.snapshot()
+	m.TableId = tid
+	return m
 }
 
 func (s *Router) HasSwitched() bool {
@@ -157,6 +161,16 @@ func (s *Router) FillSlot(m *models.Slot) error {
 	}
 	s.fillSlot(m, false, method)
 	return nil
+}
+func (s *Router) DelSlots(tid int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return ErrClosedRouter
+	}
+	s.slots[tid] = nil
+	delete(s.slots, tid)
+	return  nil
 }
 
 func (s *Router) KeepAlive() error {
