@@ -374,13 +374,13 @@ func (s *Session) handleRequestPing(r *Request, d *Router) error {
 func (s *Session) handleRequestInfo(r *Request, d *Router) error {
 	var addr string
 	var nblks = len(r.Multi) - 1
-	if _, ok := d.table[r.Database]; !ok {
-		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist", addr)
-		return nil
+	slotNum, err := d.getSlotNum(r.Database)
+	if err != nil {
+		return err
 	}
 	switch {
 	case nblks == 0:
-		slot := time.Now().Nanosecond() % d.table[r.Database].MaxSlotMum
+		slot := time.Now().Nanosecond() % slotNum
 		return d.dispatchSlot(r, int(slot))
 	default:
 		addr = string(r.Multi[1].Value)
@@ -576,9 +576,9 @@ func (s *Session) handleRequestSlotsInfo(r *Request, d *Router) error {
 
 func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 	var nblks = len(r.Multi) - 1
-	if _, ok := d.table[r.Database]; !ok {
-		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist")
-		return nil
+	slotNum, err := d.getSlotNum(r.Database)
+	if err != nil {
+		return err
 	}
 	switch {
 	case nblks <= 1:
@@ -589,7 +589,7 @@ func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 	case err != nil:
 		r.Resp = redis.NewErrorf("ERR parse slotnum '%s' failed, %s", r.Multi[1].Value, err)
 		return nil
-	case slot < 0 || int(slot) >= d.table[r.Database].MaxSlotMum:
+	case slot < 0 || int(slot) >= slotNum:
 		r.Resp = redis.NewErrorf("ERR parse slotnum '%s' failed, out of range", r.Multi[1].Value)
 		return nil
 	default:
@@ -599,9 +599,9 @@ func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 
 func (s *Session) handleRequestSlotsMapping(r *Request, d *Router) error {
 	var nblks = len(r.Multi) - 1
-	if _, ok := d.table[r.Database]; !ok {
-		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist")
-		return nil
+	slotNum, err := d.getSlotNum(r.Database)
+	if err != nil {
+		return err
 	}
 	switch {
 	case nblks >= 2:
@@ -628,7 +628,7 @@ func (s *Session) handleRequestSlotsMapping(r *Request, d *Router) error {
 		})
 	}
 	if nblks == 0 {
-		var array = make([]*redis.Resp, d.table[r.Database].MaxSlotMum)
+		var array = make([]*redis.Resp, slotNum)
 		for i, m := range d.GetSlots() {
 			array[i] = marshalToResp(m)
 		}
