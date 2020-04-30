@@ -144,6 +144,15 @@ func (s *Router) getSlotNum(tid int) (int, error) {
 		return 0,  ErrInvalidTableId
 	}
 }
+func (s *Router) getAuth(tid int) (string, error) {
+	s.tableMu.RLock()
+	defer s.tableMu.RUnlock()
+	if t, ok := s.table[tid]; ok == true {
+		return t.Auth, nil
+	} else {
+		return "",  ErrInvalidTableId
+	}
+}
 
 func (s *Router) FillSlot(m *models.Slot) error {
 	s.mu.Lock()
