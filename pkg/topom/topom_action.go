@@ -83,14 +83,13 @@ func (s *Topom) ProcessSlotAction() error {
 }
 
 func (s *Topom) processSlotAction(tid int, sid int) error {
-	var db int = 0
 	for s.IsOnline() {
 		if exec, err := s.newSlotActionExecutor(tid, sid); err != nil {
 			return err
 		} else if exec == nil {
 			time.Sleep(time.Second)
 		} else {
-			n, nextdb, err := exec(db)
+			n, nextdb, err := exec(tid)
 			if err != nil {
 				return err
 			}
@@ -105,7 +104,6 @@ func (s *Topom) processSlotAction(tid int, sid int) error {
 			if us := s.GetSlotActionInterval(); us != 0 {
 				time.Sleep(time.Microsecond * time.Duration(us))
 			}
-			db = nextdb
 		}
 	}
 	return nil
