@@ -261,7 +261,6 @@ func (t *cmdDashboard) handleSlotsCommand(d map[string]interface{}) {
 	switch {
 
 	case d["--slots-status"].(bool):
-
 		log.Debugf("call rpc slots to dashboard %s", t.addr)
 		o, err := c.Slots()
 		if err != nil {
@@ -269,11 +268,24 @@ func (t *cmdDashboard) handleSlotsCommand(d map[string]interface{}) {
 		}
 		log.Debugf("call rpc slots OK")
 
-		b, err := json.MarshalIndent(o, "", "    ")
-		if err != nil {
-			log.PanicErrorf(err, "json marshal failed")
+		gid, ok := utils.ArgumentInteger(d, "--gid")
+		if ok {
+			for _, slot := range o {
+				if 	slot.BackendAddrGroupId == gid {
+					b, err := json.MarshalIndent(slot, "", "    ")
+					if err != nil {
+						log.PanicErrorf(err, "json marshal failed")
+					}
+					fmt.Println(string(b))
+				}
+			}
+		} else {
+			b, err := json.MarshalIndent(o, "", "    ")
+			if err != nil {
+				log.PanicErrorf(err, "json marshal failed")
+			}
+			fmt.Println(string(b))
 		}
-		fmt.Println(string(b))
 
 	case d["--slots-assign"].(bool) && d["--offline"].(bool):
 

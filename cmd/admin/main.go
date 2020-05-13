@@ -26,7 +26,7 @@ Usage:
 	codis-admin [-v] --dashboard=ADDR            --manager-status
 	codis-admin [-v] --dashboard=ADDR            --set-manager (--enable|--disable)
 	codis-admin [-v] --dashboard=ADDR            --slots-assign   --beg=ID --end=ID (--gid=ID|--offline) --tid=ID [--confirm]
-	codis-admin [-v] --dashboard=ADDR            --slots-status
+	codis-admin [-v] --dashboard=ADDR            --slots-status   [--gid=ID]
 	codis-admin [-v] --dashboard=ADDR            --list-proxy
 	codis-admin [-v] --dashboard=ADDR            --create-proxy   --addr=ADDR
 	codis-admin [-v] --dashboard=ADDR            --online-proxy   --addr=ADDR
