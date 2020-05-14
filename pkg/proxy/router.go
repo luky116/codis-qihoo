@@ -17,7 +17,7 @@ import (
 
 type Router struct {
 	mu sync.RWMutex
-	tableMutex sync.RWMutex
+	tableMu sync.RWMutex
 
 	pool struct {
 		primary *sharedBackendConnPool
@@ -72,7 +72,9 @@ func (s *Router) GetSlots() []*models.Slot {
 	var slots []*models.Slot
 	for i := range s.slots {
 		for j := range s.slots[i] {
-			slots = append(slots, s.slots[i][j].snapshot())
+			m  := s.slots[i][j].snapshot()
+			m.TableId  = i
+			slots = append(slots, m)
 		}
 	}
 	return slots
@@ -85,7 +87,9 @@ func (s *Router) GetSlot(tid, sid int) *models.Slot {
 		return nil
 	}
 	slot := &s.slots[tid][sid]
-	return slot.snapshot()
+	m := slot.snapshot()
+	m.TableId = tid
+	return m
 }
 
 func (s *Router) HasSwitched() bool {
@@ -110,25 +114,44 @@ var (
 
 
 func (s *Router) DelTable(t *models.Table) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.tableMu.Lock()
+	defer s.tableMu.Unlock()
 	delete(s.table, t.Id)
 }
 
 func (s *Router) FillTable(t *models.Table) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.tableMu.Lock()
+	defer s.tableMu.Unlock()
 	s.table[t.Id] = t
 	log.Infof("fill table-[%d]", t.Id)
 }
 
 func (s *Router) GetTable(tid int) *models.Table {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if t , ok := s.table[tid]; ok {
+	s.tableMu.RLock()
+	defer s.tableMu.RUnlock()
+	if t , ok := s.table[tid]; ok == true {
 		return t
 	}
 	return nil
+}
+
+func (s *Router) getSlotNum(tid int) (int, error) {
+	s.tableMu.RLock()
+	defer s.tableMu.RUnlock()
+	if t, ok := s.table[tid]; ok == true {
+		return t.MaxSlotMum, nil
+	} else {
+		return 0,  ErrInvalidTableId
+	}
+}
+func (s *Router) getAuth(tid int) (string, error) {
+	s.tableMu.RLock()
+	defer s.tableMu.RUnlock()
+	if t, ok := s.table[tid]; ok == true {
+		return t.Auth, nil
+	} else {
+		return "",  ErrInvalidTableId
+	}
 }
 
 func (s *Router) FillSlot(m *models.Slot) error {
@@ -158,6 +181,16 @@ func (s *Router) FillSlot(m *models.Slot) error {
 	s.fillSlot(m, false, method)
 	return nil
 }
+func (s *Router) DelSlots(tid int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return ErrClosedRouter
+	}
+	s.slots[tid] = nil
+	delete(s.slots, tid)
+	return  nil
+}
 
 func (s *Router) KeepAlive() error {
 	s.mu.RLock()
@@ -176,13 +209,21 @@ func (s *Router) isOnline() bool {
 
 func (s *Router) dispatch(r *Request) error {
 	hkey := getHashKey(r.Multi, r.OpStr)
-	var id = Hash(hkey) % uint32(s.table[r.Database].MaxSlotMum)
+	slotNum, err := s.getSlotNum(r.Database)
+	if err != nil {
+		return err
+	}
+	var id = Hash(hkey) % uint32(slotNum)
 	slot := &s.slots[r.Database][id]
 	return slot.forward(r, hkey)
 }
 
 func (s *Router) dispatchSlot(r *Request, id int) error {
-	if id < 0 || id >= s.table[r.Database].MaxSlotMum {
+	slotNum, err := s.getSlotNum(r.Database)
+	if err != nil {
+		return err
+	}
+	if id < 0 || id >= slotNum {
 		return ErrInvalidSlotId
 	}
 	slot := &s.slots[r.Database][id]

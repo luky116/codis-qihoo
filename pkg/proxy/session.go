@@ -46,6 +46,7 @@ type Session struct {
 	config *Config
 
 	authorized bool
+	auth string
 }
 
 func (s *Session) String() string {
@@ -271,20 +272,24 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 	case "QUIT":
 		return s.handleQuit(r)
 	case "AUTH":
-		return s.handleAuth(r)
+		return s.handleAuth(r, d)
+	case "SELECT":
+		return s.handleSelect(r, d)
 	}
 
 	if !s.authorized {
-		if s.config.SessionAuth != "" {
-			r.Resp = redis.NewErrorf("NOAUTH Authentication required")
-			return nil
-		}
-		s.authorized = true
+		r.Resp = redis.NewErrorf("NOAUTH Authentication required")
+		return nil
 	}
+//	if !s.authorized {
+//		if s.config.SessionAuth != "" {
+//			r.Resp = redis.NewErrorf("NOAUTH Authentication required")
+//			return nil
+//		}
+//		s.authorized = true
+//	}
 
 	switch opstr {
-	case "SELECT":
-		return s.handleSelect(r, d)
 	case "PING":
 		return s.handleRequestPing(r, d)
 	case "INFO":
@@ -314,19 +319,20 @@ func (s *Session) handleQuit(r *Request) error {
 	return nil
 }
 
-func (s *Session) handleAuth(r *Request) error {
+func (s *Session) handleAuth(r *Request, d *Router) error {
 	if len(r.Multi) != 2 {
 		r.Resp = redis.NewErrorf("ERR wrong number of arguments for 'AUTH' command")
 		return nil
 	}
-	switch {
-	case s.config.SessionAuth == "":
-		r.Resp = redis.NewErrorf("ERR Client sent AUTH, but no password is set")
-	case s.config.SessionAuth != string(r.Multi[1].Value):
-		s.authorized = false
-		r.Resp = redis.NewErrorf("ERR invalid password")
-	default:
+	auth, err := d.getAuth(r.Database)
+	if err != nil {
+		r.Resp = redis.NewErrorf("ERR %s", err)
+	}
+	if auth == string(r.Multi[1].Value) {
 		s.authorized = true
+		r.Resp = RespOK
+	} else {
+		s.auth = auth
 		r.Resp = RespOK
 	}
 	return nil
@@ -339,11 +345,18 @@ func (s *Session) handleSelect(r *Request, d *Router) error {
 	}
 	if db, err := strconv.Atoi(string(r.Multi[1].Value)); err != nil {
 		r.Resp = redis.NewErrorf("ERR invalid DB index")
-	} else if _, ok := d.table[db]; !ok {
+	} else if auth, err := d.getAuth(db); err != nil {
 		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist")
+	} else if auth == "" && s.auth != "" {
+		s.authorized = false
+		r.Resp = redis.NewErrorf("ERR Client sent AUTH, but no password is set")
+	} else if auth != s.auth {
+		s.authorized = false
+		r.Resp = redis.NewErrorf("ERR invalid password")
 	} else {
 		r.Resp = RespOK
 		s.database = db
+		s.authorized = true
 	}
 	return nil
 }
@@ -374,13 +387,13 @@ func (s *Session) handleRequestPing(r *Request, d *Router) error {
 func (s *Session) handleRequestInfo(r *Request, d *Router) error {
 	var addr string
 	var nblks = len(r.Multi) - 1
-	if _, ok := d.table[r.Database]; !ok {
-		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist", addr)
-		return nil
+	slotNum, err := d.getSlotNum(r.Database)
+	if err != nil {
+		return err
 	}
 	switch {
 	case nblks == 0:
-		slot := time.Now().Nanosecond() % d.table[r.Database].MaxSlotMum
+		slot := time.Now().Nanosecond() % slotNum
 		return d.dispatchSlot(r, int(slot))
 	default:
 		addr = string(r.Multi[1].Value)
@@ -576,9 +589,9 @@ func (s *Session) handleRequestSlotsInfo(r *Request, d *Router) error {
 
 func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 	var nblks = len(r.Multi) - 1
-	if _, ok := d.table[r.Database]; !ok {
-		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist")
-		return nil
+	slotNum, err := d.getSlotNum(r.Database)
+	if err != nil {
+		return err
 	}
 	switch {
 	case nblks <= 1:
@@ -589,7 +602,7 @@ func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 	case err != nil:
 		r.Resp = redis.NewErrorf("ERR parse slotnum '%s' failed, %s", r.Multi[1].Value, err)
 		return nil
-	case slot < 0 || int(slot) >= d.table[r.Database].MaxSlotMum:
+	case slot < 0 || int(slot) >= slotNum:
 		r.Resp = redis.NewErrorf("ERR parse slotnum '%s' failed, out of range", r.Multi[1].Value)
 		return nil
 	default:
@@ -599,9 +612,9 @@ func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 
 func (s *Session) handleRequestSlotsMapping(r *Request, d *Router) error {
 	var nblks = len(r.Multi) - 1
-	if _, ok := d.table[r.Database]; !ok {
-		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist")
-		return nil
+	slotNum, err := d.getSlotNum(r.Database)
+	if err != nil {
+		return err
 	}
 	switch {
 	case nblks >= 2:
@@ -628,7 +641,7 @@ func (s *Session) handleRequestSlotsMapping(r *Request, d *Router) error {
 		})
 	}
 	if nblks == 0 {
-		var array = make([]*redis.Resp, d.table[r.Database].MaxSlotMum)
+		var array = make([]*redis.Resp, slotNum)
 		for i, m := range d.GetSlots() {
 			array[i] = marshalToResp(m)
 		}

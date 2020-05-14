@@ -708,6 +708,7 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 
 		name := utils.ArgumentMust(d, "--name")
 		num := utils.ArgumentIntegerMust(d, "--num")
+		auth := utils.ArgumentMust(d, "--auth")
 		tid, err := utils.ArgumentInteger(d, "--tid")
 		if err == false {
 			tid = -1
@@ -717,7 +718,7 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 			}
 		}
 		log.Debugf("call rpc create-table to dashboard %s", t.addr)
-		if  err := c.CreateTable(name, num, tid); err != nil {
+		if  err := c.CreateTable(name, num, tid, auth); err != nil {
 			log.PanicErrorf(err, "call rpc create-Table to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc create-group OK")
@@ -734,9 +735,10 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 
 		tid := utils.ArgumentIntegerMust(d, "--tid")
 		name := utils.ArgumentMust(d, "--name")
+		auth := utils.ArgumentMust(d, "--auth")
 
 		log.Debugf("call rpc rename-table to dashboard %s", t.addr)
-		if err := c.RenameTable(tid, name); err != nil {
+		if err := c.RenameTable(tid, name, auth); err != nil {
 			log.PanicErrorf(err, "call rpc rename-table to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc rename-table OK")
@@ -751,7 +753,7 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 		log.Debugf("call rpc table-list OK")
 
 		for _, t := range s.Table {
-			fmt.Printf("table ID: %d, table name: %s, slots num: %d\n", t.Id, t.Name, t.MaxSlotMum)
+			fmt.Printf("table ID: %d, table name: %s, slots num: %d, auth: %s\n", t.Id, t.Name, t.MaxSlotMum, t.Auth)
 		}
 		fmt.Println()
 	case d["--set-table-meta"].(bool):

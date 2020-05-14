@@ -315,6 +315,7 @@ func (s *Proxy) RemoveTable(table *models.Table) error {
 		}
 		s.router.FillSlot(sm)
 	}
+	s.router.DelSlots(table.Id)
 	return nil
 }
 
