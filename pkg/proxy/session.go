@@ -277,10 +277,10 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 		return s.handleSelect(r, d)
 	}
 
-	if !s.authorized {
-		r.Resp = redis.NewErrorf("NOAUTH Authentication required")
-		return nil
-	}
+//	if !s.authorized {
+//		r.Resp = redis.NewErrorf("NOAUTH Authentication required")
+//		return nil
+//	}
 //	if !s.authorized {
 //		if s.config.SessionAuth != "" {
 //			r.Resp = redis.NewErrorf("NOAUTH Authentication required")
@@ -416,18 +416,24 @@ func (s *Session) handleRequestMGet(r *Request, d *Router) error {
 	case nkeys == 1:
 		return d.dispatch(r)
 	}
-	var sub = r.MakeSubRequest(nkeys)
+	//var sub = r.MakeSubRequest(nkeys)
+	sub, mgr, err := r.splite(d)
+	if err != nil {
+		return err
+	}
+
 	for i := range sub {
-		sub[i].Multi = []*redis.Resp{
-			r.Multi[0],
-			r.Multi[i+1],
+		if err := d.dispatch(sub[i]); err != nil {
+			return err
 		}
-		if err := d.dispatch(&sub[i]); err != nil {
+	}
+	for i := range mgr {
+		if err := d.dispatch(mgr[i]); err != nil {
 			return err
 		}
 	}
 	r.Coalesce = func() error {
-		var array = make([]*redis.Resp, len(sub))
+		var array = make([]*redis.Resp, nkeys)
 		for i := range sub {
 			if err := sub[i].Err; err != nil {
 				return err
@@ -435,8 +441,25 @@ func (s *Session) handleRequestMGet(r *Request, d *Router) error {
 			switch resp := sub[i].Resp; {
 			case resp == nil:
 				return ErrRespIsRequired
-			case resp.IsArray() && len(resp.Array) == 1:
-				array[i] = resp.Array[0]
+			case resp.IsArray() :
+				for j, idx := range sub[i].Disassembly {
+					array[idx] = resp.Array[j]
+				}
+			default:
+				return fmt.Errorf("bad mget resp: %s array.len = %d", resp.Type, len(resp.Array))
+			}
+		}
+		for i := range mgr {
+			if err := mgr[i].Err; err != nil {
+				return err
+			}
+			switch resp := mgr[i].Resp; {
+			case resp == nil:
+				return ErrRespIsRequired
+			case resp.IsArray() :
+				for j, idx := range mgr[i].Disassembly {
+					array[idx] = resp.Array[j]
+				}
 			default:
 				return fmt.Errorf("bad mget resp: %s array.len = %d", resp.Type, len(resp.Array))
 			}

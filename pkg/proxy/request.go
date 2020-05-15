@@ -4,6 +4,7 @@
 package proxy
 
 import (
+	"github.com/CodisLabs/codis/pkg/utils/log"
 	"sync"
 	"unsafe"
 
@@ -28,6 +29,7 @@ type Request struct {
 	Err error
 
 	Coalesce func() error
+	Disassembly []int
 }
 
 func (r *Request) IsBroken() bool {
@@ -46,6 +48,67 @@ func (r *Request) MakeSubRequest(n int) []Request {
 		x.UnixNano = r.UnixNano
 	}
 	return sub
+}
+
+func (s *Request) splite(d * Router) ([]* Request, []* Request, error) {
+	var sub []* Request
+	var mgr []* Request
+	slotNum, err := d.getSlotNum(s.Database)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i, key := range s.Multi[1:] {
+		var id = Hash(key.Value) % uint32(slotNum)
+		slot := &d.slots[s.Database][id]
+		if slot.migrate.bc != nil {
+			var disassemble []int
+			disassemble = append(disassemble, i)
+			request := &Request{
+				Batch:       s.Batch,
+				Broken:      s.Broken,
+				OpStr:       s.OpStr,
+				OpFlag:      s.OpFlag,
+				Database:    s.Database,
+				UnixNano:    s.UnixNano,
+				Disassembly: disassemble,
+			}
+			request.Multi = []*redis.Resp{
+				s.Multi[0],
+				s.Multi[i+1],
+			}
+			mgr = append(mgr, request)
+		} else {
+			if slot.backend.bc == nil {
+				log.Debugf("slot-%04d is not ready: hash key = '%s'",
+					slot.id, key.Value)
+				return nil, nil,  ErrSlotIsNotReady
+			} else {
+				gid := slot.backend.id
+				if sub[gid] != nil {
+					var disassemble []int
+					disassemble = append(disassemble, i)
+					request := &Request{
+						Batch:       s.Batch,
+						Broken:      s.Broken,
+						OpStr:       s.OpStr,
+						OpFlag:      s.OpFlag,
+						Database:    s.Database,
+						UnixNano:    s.UnixNano,
+						Disassembly: disassemble,
+					}
+					request.Multi = []*redis.Resp{
+						s.Multi[0],
+						s.Multi[i+1],
+					}
+					sub[gid] = request
+				} else {
+					sub[gid].Multi = append(sub[gid].Multi, key)
+					sub[gid].Disassembly = append(sub[gid].Disassembly, i)
+				}
+			}
+		}
+	}
+	return sub, mgr, nil
 }
 
 const GOLDEN_RATIO_PRIME_32 = 0x9e370001
