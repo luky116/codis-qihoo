@@ -154,6 +154,16 @@ func (s *Router) getAuth(tid int) (string, error) {
 	}
 }
 
+func (s *Router) getAllAuth() map[int]string {
+	s.tableMu.RLock()
+	defer s.tableMu.RUnlock()
+	auth := make(map[int]string)
+	for i := range s.table {
+		auth[i] = s.table[i].Auth
+	}
+	return auth
+}
+
 func (s *Router) FillSlot(m *models.Slot) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

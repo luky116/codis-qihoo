@@ -47,6 +47,7 @@ type Session struct {
 
 	authorized bool
 	auth string
+	AuthorizeTable int
 }
 
 func (s *Session) String() string {
@@ -277,10 +278,10 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 		return s.handleSelect(r, d)
 	}
 
-//	if !s.authorized {
-//		r.Resp = redis.NewErrorf("NOAUTH Authentication required")
-//		return nil
-//	}
+	if !s.authorized {
+		r.Resp = redis.NewErrorf("NOAUTH Authentication required")
+		return nil
+	}
 //	if !s.authorized {
 //		if s.config.SessionAuth != "" {
 //			r.Resp = redis.NewErrorf("NOAUTH Authentication required")
@@ -324,16 +325,22 @@ func (s *Session) handleAuth(r *Request, d *Router) error {
 		r.Resp = redis.NewErrorf("ERR wrong number of arguments for 'AUTH' command")
 		return nil
 	}
-	auth, err := d.getAuth(r.Database)
-	if err != nil {
-		r.Resp = redis.NewErrorf("ERR %s", err)
+	auth := d.getAllAuth()
+	find := false
+	for i := range auth {
+		if auth[i] == string(r.Multi[1].Value) {
+			find = true
+			s.AuthorizeTable = i
+			r.Resp = RespOK
+			if i == r.Database {
+				s.authorized = true
+			}
+			break
+		}
 	}
-	if auth == string(r.Multi[1].Value) {
-		s.authorized = true
-		r.Resp = RespOK
-	} else {
-		s.auth = auth
-		r.Resp = RespOK
+	if find == false {
+		s.authorized = false
+		r.Resp = redis.NewErrorf("ERR invalid password")
 	}
 	return nil
 }
@@ -345,14 +352,8 @@ func (s *Session) handleSelect(r *Request, d *Router) error {
 	}
 	if db, err := strconv.Atoi(string(r.Multi[1].Value)); err != nil {
 		r.Resp = redis.NewErrorf("ERR invalid DB index")
-	} else if auth, err := d.getAuth(db); err != nil {
-		r.Resp = redis.NewErrorf("ERR invalid DB index, DB not exist")
-	} else if auth == "" && s.auth != "" {
-		s.authorized = false
-		r.Resp = redis.NewErrorf("ERR Client sent AUTH, but no password is set")
-	} else if auth != s.auth {
-		s.authorized = false
-		r.Resp = redis.NewErrorf("ERR invalid password")
+	} else if db != s.AuthorizeTable {
+		r.Resp = redis.NewErrorf("Db passward is invalid")
 	} else {
 		r.Resp = RespOK
 		s.database = db
