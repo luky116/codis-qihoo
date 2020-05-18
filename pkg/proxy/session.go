@@ -422,17 +422,17 @@ func (s *Session) handleRequestInfo(r *Request, d *Router) error {
 	return nil
 }
 
-func (s *Session) handleRequestMGet(r *Request, d *Router) error {
-	var nkeys = len(r.Multi) - 1
+func (s *Session) handleMultiCommand(r *Request, d *Router, n string, step int) error {
+	var nblks = len(r.Multi) - 1
 	switch {
-	case nkeys == 0:
-		r.Resp = redis.NewErrorf("ERR wrong number of arguments for 'MGET' command")
+	case nblks == 0 || nblks% step != 0:
+		r.Resp = redis.NewErrorf("ERR wrong number of arguments for '%s' command", n)
 		return nil
-	case nkeys == 1:
+	case nblks == step:
 		return d.dispatch(r)
 	}
-	//var sub = r.MakeSubRequest(nkeys)
-	sub, mgr, err := r.splite(d)
+	//var sub = r.MakeSubRequest(nblks)
+	sub, mgr, err := r.splite(d, step)
 	if err != nil {
 		return err
 	}
@@ -448,64 +448,7 @@ func (s *Session) handleRequestMGet(r *Request, d *Router) error {
 		}
 	}
 	r.Coalesce = func() error {
-		var array = make([]*redis.Resp, nkeys)
-		for i := range sub {
-			if err := sub[i].Err; err != nil {
-				return err
-			}
-			switch resp := sub[i].Resp; {
-			case resp == nil:
-				return ErrRespIsRequired
-			case resp.IsArray() :
-				for j, idx := range sub[i].Disassembly {
-					array[idx] = resp.Array[j]
-				}
-			default:
-				return fmt.Errorf("bad mget resp: %s array.len = %d", resp.Type, len(resp.Array))
-			}
-		}
-		for i := range mgr {
-			if err := mgr[i].Err; err != nil {
-				return err
-			}
-			switch resp := mgr[i].Resp; {
-			case resp == nil:
-				return ErrRespIsRequired
-			case resp.IsArray() :
-				for j, idx := range mgr[i].Disassembly {
-					array[idx] = resp.Array[j]
-				}
-			default:
-				return fmt.Errorf("bad mget resp: %s array.len = %d", resp.Type, len(resp.Array))
-			}
-		}
-		r.Resp = redis.NewArray(array)
-		return nil
-	}
-	return nil
-}
-
-func (s *Session) handleRequestMSet(r *Request, d *Router) error {
-	var nblks = len(r.Multi) - 1
-	switch {
-	case nblks == 0 || nblks%2 != 0:
-		r.Resp = redis.NewErrorf("ERR wrong number of arguments for 'MSET' command")
-		return nil
-	case nblks == 2:
-		return d.dispatch(r)
-	}
-	var sub = r.MakeSubRequest(nblks / 2)
-	for i := range sub {
-		sub[i].Multi = []*redis.Resp{
-			r.Multi[0],
-			r.Multi[i*2+1],
-			r.Multi[i*2+2],
-		}
-		if err := d.dispatch(&sub[i]); err != nil {
-			return err
-		}
-	}
-	r.Coalesce = func() error {
+		var array = make([]*redis.Resp, nblks/ step)
 		for i := range sub {
 			if err := sub[i].Err; err != nil {
 				return err
@@ -515,13 +458,47 @@ func (s *Session) handleRequestMSet(r *Request, d *Router) error {
 				return ErrRespIsRequired
 			case resp.IsString():
 				r.Resp = resp
+			case resp.IsArray() :
+				for j, idx := range sub[i].Disassembly {
+					array[idx] = resp.Array[j]
+				}
 			default:
-				return fmt.Errorf("bad mset resp: %s value.len = %d", resp.Type, len(resp.Value))
+				return fmt.Errorf("bad %s resp: %s array.len = %d", n, resp.Type, len(resp.Array))
 			}
+		}
+		for i := range mgr {
+			if err := mgr[i].Err; err != nil {
+				return err
+			}
+			switch resp := mgr[i].Resp; {
+			case resp == nil:
+				return ErrRespIsRequired
+			case resp.IsString():
+				r.Resp = resp
+			case resp.IsArray() :
+				for j, idx := range mgr[i].Disassembly {
+					array[idx] = resp.Array[j]
+				}
+			default:
+				return fmt.Errorf("bad %s resp: %s array.len = %d", n, resp.Type, len(resp.Array))
+			}
+		}
+		switch n {
+		case "MGET":
+			r.Resp = redis.NewArray(array)
+		default:
 		}
 		return nil
 	}
 	return nil
+}
+
+func (s *Session) handleRequestMGet(r *Request, d *Router) error {
+	return s.handleMultiCommand(r, d, "MGET", 1)
+}
+
+func (s *Session) handleRequestMSet(r *Request, d *Router) error {
+	return s.handleMultiCommand(r, d, "MSET", 2)
 }
 
 func (s *Session) handleRequestDel(r *Request, d *Router) error {

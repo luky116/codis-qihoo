@@ -50,19 +50,21 @@ func (r *Request) MakeSubRequest(n int) []Request {
 	return sub
 }
 
-func (s *Request) splite(d * Router) ([]* Request, []* Request, error) {
-	var sub []* Request
+func (s *Request) splite(d * Router, step int) (map[int]* Request, []* Request, error) {
+	sub := make(map[int]* Request)
 	var mgr []* Request
 	slotNum, err := d.getSlotNum(s.Database)
 	if err != nil {
 		return nil, nil, err
 	}
-	for i, key := range s.Multi[1:] {
+	var key *redis.Resp
+	for i := 1; i < len(s.Multi); i = i + step {
+		key = s.Multi[i]
 		var id = Hash(key.Value) % uint32(slotNum)
 		slot := &d.slots[s.Database][id]
 		if slot.migrate.bc != nil {
 			var disassemble []int
-			disassemble = append(disassemble, i)
+			disassemble = append(disassemble, (i - 1) / step)
 			request := &Request{
 				Batch:       s.Batch,
 				Broken:      s.Broken,
@@ -74,7 +76,10 @@ func (s *Request) splite(d * Router) ([]* Request, []* Request, error) {
 			}
 			request.Multi = []*redis.Resp{
 				s.Multi[0],
-				s.Multi[i+1],
+				s.Multi[i],
+			}
+			if step == 2 {
+				request.Multi = append(request.Multi, s.Multi[i + 1])
 			}
 			mgr = append(mgr, request)
 		} else {
@@ -84,9 +89,9 @@ func (s *Request) splite(d * Router) ([]* Request, []* Request, error) {
 				return nil, nil,  ErrSlotIsNotReady
 			} else {
 				gid := slot.backend.id
-				if sub[gid] != nil {
+				if sub[gid] == nil {
 					var disassemble []int
-					disassemble = append(disassemble, i)
+					disassemble = append(disassemble, (i - 1) / step)
 					request := &Request{
 						Batch:       s.Batch,
 						Broken:      s.Broken,
@@ -98,12 +103,18 @@ func (s *Request) splite(d * Router) ([]* Request, []* Request, error) {
 					}
 					request.Multi = []*redis.Resp{
 						s.Multi[0],
-						s.Multi[i+1],
+						s.Multi[i],
+					}
+					if step == 2 {
+						request.Multi = append(request.Multi, s.Multi[i + 1])
 					}
 					sub[gid] = request
 				} else {
 					sub[gid].Multi = append(sub[gid].Multi, key)
-					sub[gid].Disassembly = append(sub[gid].Disassembly, i)
+					if step == 2 {
+						sub[gid].Multi = append(sub[gid].Multi, s.Multi[i + 1])
+					}
+					sub[gid].Disassembly = append(sub[gid].Disassembly, (i - 1) / step)
 				}
 			}
 		}
