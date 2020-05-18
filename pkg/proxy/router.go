@@ -225,7 +225,7 @@ func (s *Router) dispatch(r *Request) error {
 	}
 	var id = Hash(hkey) % uint32(slotNum)
 	slot := &s.slots[r.Database][id]
-	log.Infof("key: %s dispatch slot id: %d, slot num: %d", hkey,slot.id, slotNum)
+//	log.Infof("key: %s dispatch slot id: %d, slot num: %d", hkey,slot.id, slotNum)
 	return slot.forward(r, hkey)
 }
 

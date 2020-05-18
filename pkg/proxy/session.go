@@ -45,9 +45,9 @@ type Session struct {
 	broken atomic2.Bool
 	config *Config
 
-	authorized bool
-	auth string
-	AuthorizeTable int
+	authorized     bool
+	auth           string
+	authorizeTable int
 }
 
 func (s *Session) String() string {
@@ -279,7 +279,7 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 	}
 
 	if !s.authorized {
-		r.Resp = redis.NewErrorf("NOAUTH Authentication required")
+		r.Resp = redis.NewErrorf("DB-[%d] NOAUTH Authentication required", s.database)
 		return nil
 	}
 //	if !s.authorized {
@@ -330,10 +330,11 @@ func (s *Session) handleAuth(r *Request, d *Router) error {
 	for i := range auth {
 		if auth[i] == string(r.Multi[1].Value) {
 			find = true
-			s.AuthorizeTable = i
-			r.Resp = RespOK
+			s.authorizeTable = i
 			if i == r.Database {
 				s.authorized = true
+			} else {
+				s.authorized = false
 			}
 			break
 		}
@@ -341,7 +342,13 @@ func (s *Session) handleAuth(r *Request, d *Router) error {
 	if find == false {
 		s.authorized = false
 		r.Resp = redis.NewErrorf("ERR invalid password")
+		return nil
 	}
+	if s.config.SessionAuth == string(r.Multi[1].Value) {
+		s.authorized = true
+	}
+	s.auth = string(r.Multi[1].Value)
+	r.Resp = RespOK
 	return nil
 }
 
@@ -352,8 +359,10 @@ func (s *Session) handleSelect(r *Request, d *Router) error {
 	}
 	if db, err := strconv.Atoi(string(r.Multi[1].Value)); err != nil {
 		r.Resp = redis.NewErrorf("ERR invalid DB index")
-	} else if db != s.AuthorizeTable {
-		r.Resp = redis.NewErrorf("Db passward is invalid")
+	} else if _, ok := d.table[db]; !ok {
+		r.Resp = redis.NewErrorf("ERR invalid DB index, DB don't exist")
+	} else if s.isAuthorized(db) {
+		r.Resp = redis.NewErrorf("DB-[%d] passward is invalid", db)
 	} else {
 		r.Resp = RespOK
 		s.database = db
@@ -361,6 +370,11 @@ func (s *Session) handleSelect(r *Request, d *Router) error {
 	}
 	return nil
 }
+
+func (s *Session)isAuthorized(db int) bool {
+	return db != s.authorizeTable || (s.config.SessionAuth != "" && s.auth != s.config.SessionAuth)
+}
+
 
 func (s *Session) handleRequestPing(r *Request, d *Router) error {
 	var addr string
