@@ -422,11 +422,11 @@ func (s *Session) handleRequestInfo(r *Request, d *Router) error {
 	return nil
 }
 
-func (s *Session) handleMultiCommand(r *Request, d *Router, n string, step int) error {
+func (s *Session) handleMultiCommand(r *Request, d *Router, cmd string, step int) error {
 	var nblks = len(r.Multi) - 1
 	switch {
 	case nblks == 0 || nblks% step != 0:
-		r.Resp = redis.NewErrorf("ERR wrong number of arguments for '%s' command", n)
+		r.Resp = redis.NewErrorf("ERR wrong number of arguments for '%s' command", cmd)
 		return nil
 	case nblks == step:
 		return d.dispatch(r)
@@ -449,6 +449,7 @@ func (s *Session) handleMultiCommand(r *Request, d *Router, n string, step int) 
 	}
 	r.Coalesce = func() error {
 		var array = make([]*redis.Resp, nblks/ step)
+		var n int
 		for i := range sub {
 			if err := sub[i].Err; err != nil {
 				return err
@@ -458,12 +459,14 @@ func (s *Session) handleMultiCommand(r *Request, d *Router, n string, step int) 
 				return ErrRespIsRequired
 			case resp.IsString():
 				r.Resp = resp
+			case  resp.IsInt():
+				n += int(resp.Value[0] - '0')
 			case resp.IsArray() :
 				for j, idx := range sub[i].Disassembly {
 					array[idx] = resp.Array[j]
 				}
 			default:
-				return fmt.Errorf("bad %s resp: %s array.len = %d", n, resp.Type, len(resp.Array))
+				return fmt.Errorf("bad %s resp: %s array.len = %d", cmd, resp.Type, len(resp.Array))
 			}
 		}
 		for i := range mgr {
@@ -475,17 +478,23 @@ func (s *Session) handleMultiCommand(r *Request, d *Router, n string, step int) 
 				return ErrRespIsRequired
 			case resp.IsString():
 				r.Resp = resp
+			case  resp.IsInt():
+				n += int(resp.Value[0] - '0')
 			case resp.IsArray() :
 				for j, idx := range mgr[i].Disassembly {
 					array[idx] = resp.Array[j]
 				}
 			default:
-				return fmt.Errorf("bad %s resp: %s array.len = %d", n, resp.Type, len(resp.Array))
+				return fmt.Errorf("bad %s resp: %s array.len = %d", cmd, resp.Type, len(resp.Array))
 			}
 		}
-		switch n {
+		switch cmd {
 		case "MGET":
 			r.Resp = redis.NewArray(array)
+		case "EXISTS":
+			fallthrough
+		case "DEL":
+			r.Resp = redis.NewInt(strconv.AppendInt(nil, int64(n), 10))
 		default:
 		}
 		return nil
@@ -502,85 +511,11 @@ func (s *Session) handleRequestMSet(r *Request, d *Router) error {
 }
 
 func (s *Session) handleRequestDel(r *Request, d *Router) error {
-	var nkeys = len(r.Multi) - 1
-	switch {
-	case nkeys == 0:
-		r.Resp = redis.NewErrorf("ERR wrong number of arguments for 'DEL' command")
-		return nil
-	case nkeys == 1:
-		return d.dispatch(r)
-	}
-	var sub = r.MakeSubRequest(nkeys)
-	for i := range sub {
-		sub[i].Multi = []*redis.Resp{
-			r.Multi[0],
-			r.Multi[i+1],
-		}
-		if err := d.dispatch(&sub[i]); err != nil {
-			return err
-		}
-	}
-	r.Coalesce = func() error {
-		var n int
-		for i := range sub {
-			if err := sub[i].Err; err != nil {
-				return err
-			}
-			switch resp := sub[i].Resp; {
-			case resp == nil:
-				return ErrRespIsRequired
-			case resp.IsInt() && len(resp.Value) == 1:
-				n += int(resp.Value[0] - '0')
-			default:
-				return fmt.Errorf("bad del resp: %s value.len = %d", resp.Type, len(resp.Value))
-			}
-		}
-		r.Resp = redis.NewInt(strconv.AppendInt(nil, int64(n), 10))
-		return nil
-	}
-	return nil
+	return s.handleMultiCommand(r, d, "DEL", 1)
 }
 
 func (s *Session) handleRequestExists(r *Request, d *Router) error {
-	var nkeys = len(r.Multi) - 1
-	switch {
-	case nkeys == 0:
-		r.Resp = redis.NewErrorf("ERR wrong number of arguments for 'EXISTS' command")
-		return nil
-	case nkeys == 1:
-		return d.dispatch(r)
-	}
-	var sub = r.MakeSubRequest(nkeys)
-	for i := range sub {
-		sub[i].Multi = []*redis.Resp{
-			r.Multi[0],
-			r.Multi[i+1],
-		}
-		if err := d.dispatch(&sub[i]); err != nil {
-			return err
-		}
-	}
-	r.Coalesce = func() error {
-		var n int
-		for i := range sub {
-			if err := sub[i].Err; err != nil {
-				return err
-			}
-			switch resp := sub[i].Resp; {
-			case resp == nil:
-				return ErrRespIsRequired
-			case resp.IsInt() && len(resp.Value) == 1:
-				if resp.Value[0] != '0' {
-					n++
-				}
-			default:
-				return fmt.Errorf("bad exists resp: %s value.len = %d", resp.Type, len(resp.Value))
-			}
-		}
-		r.Resp = redis.NewInt(strconv.AppendInt(nil, int64(n), 10))
-		return nil
-	}
-	return nil
+	return s.handleMultiCommand(r, d, "EXISTS", 1)
 }
 
 func (s *Session) handleRequestSlotsInfo(r *Request, d *Router) error {
