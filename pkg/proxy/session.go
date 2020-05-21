@@ -76,6 +76,7 @@ func NewSession(sock net.Conn, config *Config) *Session {
 	s := &Session{
 		Conn: c, config: config,
 		CreateUnix: time.Now().Unix(),
+		authorizeTable: -1,
 	}
 	s.stats.opmap = make(map[string]*opStats, 16)
 	log.Infof("session [%p] create: %s", s, s)
@@ -361,7 +362,7 @@ func (s *Session) handleSelect(r *Request, d *Router) error {
 		r.Resp = redis.NewErrorf("ERR invalid DB index")
 	} else if _, ok := d.table[db]; !ok {
 		r.Resp = redis.NewErrorf("ERR invalid DB index, DB don't exist")
-	} else if s.isAuthorized(db) {
+	} else if s.isNotAuthorized(db) {
 		r.Resp = redis.NewErrorf("DB-[%d] passward is invalid", db)
 	} else {
 		r.Resp = RespOK
@@ -371,7 +372,7 @@ func (s *Session) handleSelect(r *Request, d *Router) error {
 	return nil
 }
 
-func (s *Session)isAuthorized(db int) bool {
+func (s *Session)isNotAuthorized(db int) bool {
 	return db != s.authorizeTable || (s.config.SessionAuth != "" && s.auth != s.config.SessionAuth)
 }
 

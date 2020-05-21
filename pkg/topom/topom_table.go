@@ -32,6 +32,9 @@ func (s *Topom) CreateTable(name string, num ,id int, auth string)  error {
 		if name == t.Name {
 			return  errors.Errorf("name-[%s] already exists", name)
 		}
+		if auth == t.Auth {
+			return  errors.Errorf("auth-[%s] already exists", name)
+		}
 		if tid == t.Id {
 			return  errors.Errorf("tid-[%d] already exists", tid)
 		}
@@ -135,6 +138,9 @@ func (s *Topom) RenameTable(tid int, name, auth string) error {
 		if i != tid {
 			if name == ctx.table[i].Name {
 				return  errors.Errorf("name-[%s] already exists", name)
+			}
+			if auth == ctx.table[i].Auth {
+				return  errors.Errorf("auth-[%s] already exists", name)
 			}
 		}
 	}
