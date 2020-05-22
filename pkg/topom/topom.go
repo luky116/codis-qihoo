@@ -71,6 +71,7 @@ type Topom struct {
 
 		servers map[string]*RedisStats
 		proxies map[string]*ProxyStats
+		tables  map[int]*redis.InfoTable
 	}
 
 	ha struct {

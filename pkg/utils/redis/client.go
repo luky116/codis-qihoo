@@ -5,6 +5,7 @@ package redis
 
 import (
 	"container/list"
+	"fmt"
 	"github.com/CodisLabs/codis/pkg/utils/log"
 	"net"
 	"strconv"
@@ -54,6 +55,88 @@ type Slave struct {
 	Addr string
 	Status string
 	Lag int
+}
+
+type PiakInfoTable struct {
+	Id                   int
+	PartitionNum         int
+	TotalCommandNum      int
+	TotalWriteCommandNum int
+	Qps                  int
+	WriteQps             int
+	ReadQps              int
+}
+const InfoTableChunkLength int = 7
+
+func stringToKv(s, sep string) (string, int, error) {
+	kv := strings.SplitN(s, sep, 2)
+	v, err := strconv.Atoi(strings.TrimPrefix(kv[1], " "))
+	if err != nil {
+		return "", 0, err
+	}
+	return 	strings.TrimPrefix(kv[0], " "), v, nil
+}
+
+func (c *Client)GetInfoTable() (map[int]*PiakInfoTable, error) {
+	text, err := redigo.String(c.Do("pkcluster", "info", "table"))
+	if err != nil {
+		log.Infof("send pkcluster info err: %s",errors.Trace(err))
+		return nil, errors.Trace(err)
+	}
+	lineNum := strings.Count(text, "\r\n")
+	chunkNum := lineNum / InfoTableChunkLength
+	if lineNum == 0 || lineNum % InfoTableChunkLength != 0 {
+		fmt.Print("pika pkcluster  info table format error")
+	}
+	line := strings.Split(text, "\r\n")
+	infoTable := make(map[int]* PiakInfoTable)
+	for c := 0; c < chunkNum; c++ {
+		var info PiakInfoTable
+		_, v, err := stringToKv(line[c * InfoTableChunkLength], ":")
+		if err != nil {
+			return nil, err
+		} else {
+			info.id = v
+		}
+		_, v, err = stringToKv(line[c * InfoTableChunkLength + 1], ":")
+		if err != nil {
+			return nil, err
+		} else {
+			info.partitionNum = v
+		}
+		_, v, err = stringToKv(line[c * InfoTableChunkLength + 2], ":")
+		if err != nil {
+			return nil, err
+		} else {
+			info.totalCommandNum = v
+		}
+		_, v, err = stringToKv(line[c * InfoTableChunkLength + 3], ":")
+		if err != nil {
+			return nil, err
+		} else {
+			info.totalWriteCommandNum = v
+		}
+		_, v, err = stringToKv(line[c * InfoTableChunkLength + 4], ":")
+		if err != nil {
+			return nil, err
+		} else {
+			info.qps = v
+		}
+		_, v, err = stringToKv(line[c * InfoTableChunkLength + 5], ":")
+		if err != nil {
+			return nil, err
+		} else {
+			info.writeQps = v
+		}
+		_, v, err = stringToKv(line[c * InfoTableChunkLength + 6], ":")
+		if err != nil {
+			return nil, err
+		} else {
+			info.readQps = v
+		}
+		infoTable[info.id] = &info
+	}
+	return infoTable, nil
 }
 
 func NewClientNoAuth(addr string, timeout time.Duration) (*Client, error) {
@@ -614,6 +697,15 @@ func (p *Pool) Info(addr string) (_ map[string]string, err error) {
 	}
 	defer p.PutClient(c)
 	return c.Info()
+}
+
+func (p *Pool) InfoTable(addr string) (map[int]*PiakInfoTable, error) {
+	c, err := p.GetClient(addr)
+	if err != nil {
+		return nil, err
+	}
+	defer p.PutClient(c)
+	return c.GetInfoTable()
 }
 
 func (p *Pool) InfoFull(addr string) (_ map[string]string, err error) {

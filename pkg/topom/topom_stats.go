@@ -20,6 +20,7 @@ type RedisStats struct {
 
 	Sentinel map[string]*redis.SentinelGroup `json:"sentinel,omitempty"`
 
+	TableStats map[int]*redis.PiakInfoTable `json:"table_stats"`
 	UnixTime int64 `json:"unixtime"`
 	Timeout  bool  `json:"timeout,omitempty"`
 }
@@ -34,7 +35,7 @@ func (s *Topom) newRedisStats(addr string, timeout time.Duration, do func(addr s
 		if err != nil {
 			stats.Error = rpc.NewRemoteError(err)
 		} else {
-			stats.Stats, stats.Sentinel = p.Stats, p.Sentinel
+			stats.Stats, stats.Sentinel, stats.TableStats = p.Stats, p.Sentinel, p.TableStats
 		}
 	}()
 
@@ -73,6 +74,17 @@ func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) 
 			})
 		}
 	}
+	for _, g := range ctx.group {
+		if x := g.Servers[0]; x != nil {
+			goStats(x.Addr, func(addr string) (*RedisStats, error) {
+				m, err := s.stats.redisp.InfoTable(addr)
+				if err != nil {
+					return nil, err
+				}
+				return &RedisStats{TableStats: m}, nil
+			})
+		}
+	}
 	for _, server := range ctx.sentinel.Servers {
 		goStats(server, func(addr string) (*RedisStats, error) {
 			c, err := s.ha.redisp.GetClient(addr)
@@ -99,6 +111,18 @@ func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) 
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		tableQps := make(map[int]*redis.InfoTable)
+		for addr, cur := range stats {
+			last := s.stats.servers[addr]
+			if last != nil &&  {
+				duration := last
+				for _, t := range cur {
+					t[]
+
+				}
+
+			}
+		}
 		s.stats.servers = stats
 	}()
 	return &fut, nil
