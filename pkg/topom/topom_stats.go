@@ -66,22 +66,23 @@ func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) 
 	for _, g := range ctx.group {
 		for _, x := range g.Servers {
 			goStats(x.Addr, func(addr string) (*RedisStats, error) {
+				stats := &RedisStats{}
 				m, err := s.stats.redisp.InfoFull(addr)
 				if err != nil {
 					return nil, err
 				}
-				return &RedisStats{Stats: m}, nil
-			})
-		}
-	}
-	for _, g := range ctx.group {
-		if x := g.Servers[0]; x != nil {
-			goStats(x.Addr, func(addr string) (*RedisStats, error) {
-				m, err := s.stats.redisp.InfoTable(addr)
-				if err != nil {
-					return nil, err
+				stats.Stats = m
+				for _, g := range ctx.group {
+					if len(g.Servers) != 0 && g.Servers[0] != nil && addr == g.Servers[0].Addr {
+						t, err := s.stats.redisp.InfoTable(addr)
+						if err != nil {
+							return nil, err
+						}
+						stats.TableStats = t
+						break
+					}
 				}
-				return &RedisStats{TableStats: m}, nil
+				return stats, nil
 			})
 		}
 	}
@@ -111,18 +112,56 @@ func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) 
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		tableQps := make(map[int]*redis.InfoTable)
+		tableStats := make(map[int]*redis.PiakInfoTable)
 		for addr, cur := range stats {
 			last := s.stats.servers[addr]
-			if last != nil &&  {
-				duration := last
-				for _, t := range cur {
-					t[]
-
+			if last != nil {
+				duration := cur.UnixTime - last.UnixTime
+				for id, t := range cur.TableStats {
+					var totalQPSPerGroup int64
+					var writeQPSPerGroup int64
+					var readQPSPerGroup int64
+					if _, ok := last.TableStats[id]; ok == true {
+						totalQPSPerGroup = (t.TotalCommandNum - last.TableStats[id].TotalCommandNum) / duration
+						writeQPSPerGroup = (t.TotalWriteCommandNum - last.TableStats[id].TotalWriteCommandNum) / duration
+						readQPSPerGroup = totalQPSPerGroup - writeQPSPerGroup
+					}
+					if _, ok := tableStats[id]; ok == false {
+						tableStats[id] = &redis.PiakInfoTable{
+							Id:                   id,
+							PartitionNum:         t.PartitionNum,
+							TotalCommandNum:      0,
+							TotalWriteCommandNum: 0,
+							Qps:                  0,
+							WriteQps:             0,
+							ReadQps:              0,
+						}
+					}
+					tableStats[id].TotalCommandNum += t.TotalCommandNum
+					tableStats[id].TotalWriteCommandNum += t.TotalWriteCommandNum
+					tableStats[id].Qps += totalQPSPerGroup
+					tableStats[id].WriteQps += writeQPSPerGroup
+					tableStats[id].ReadQps += readQPSPerGroup
 				}
-
+			} else {
+				for id, t := range cur.TableStats {
+					if _, ok := tableStats[id]; ok == false {
+						tableStats[id] = &redis.PiakInfoTable{
+							Id:                   id,
+							PartitionNum:         t.PartitionNum,
+							TotalCommandNum:      0,
+							TotalWriteCommandNum: 0,
+							Qps:                  0,
+							WriteQps:             0,
+							ReadQps:              0,
+						}
+					}
+					tableStats[id].TotalCommandNum += t.TotalCommandNum
+					tableStats[id].TotalWriteCommandNum += t.TotalWriteCommandNum
+				}
 			}
 		}
+		s.stats.qps = tableStats
 		s.stats.servers = stats
 	}()
 	return &fut, nil

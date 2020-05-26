@@ -5,7 +5,6 @@ package redis
 
 import (
 	"container/list"
-	"fmt"
 	"github.com/CodisLabs/codis/pkg/utils/log"
 	"net"
 	"strconv"
@@ -60,11 +59,11 @@ type Slave struct {
 type PiakInfoTable struct {
 	Id                   int
 	PartitionNum         int
-	TotalCommandNum      int
-	TotalWriteCommandNum int
-	Qps                  int
-	WriteQps             int
-	ReadQps              int
+	TotalCommandNum      int64
+	TotalWriteCommandNum int64
+	Qps                  int64
+	WriteQps             int64
+	ReadQps              int64
 }
 const InfoTableChunkLength int = 7
 
@@ -86,7 +85,7 @@ func (c *Client)GetInfoTable() (map[int]*PiakInfoTable, error) {
 	lineNum := strings.Count(text, "\r\n")
 	chunkNum := lineNum / InfoTableChunkLength
 	if lineNum == 0 || lineNum % InfoTableChunkLength != 0 {
-		fmt.Print("pika pkcluster  info table format error")
+		log.Info("pika pkcluster  info table format error")
 	}
 	line := strings.Split(text, "\r\n")
 	infoTable := make(map[int]* PiakInfoTable)
@@ -96,46 +95,49 @@ func (c *Client)GetInfoTable() (map[int]*PiakInfoTable, error) {
 		if err != nil {
 			return nil, err
 		} else {
-			info.id = v
+			info.Id = v
 		}
 		_, v, err = stringToKv(line[c * InfoTableChunkLength + 1], ":")
 		if err != nil {
 			return nil, err
 		} else {
-			info.partitionNum = v
+			info.PartitionNum = v
 		}
 		_, v, err = stringToKv(line[c * InfoTableChunkLength + 2], ":")
 		if err != nil {
 			return nil, err
 		} else {
-			info.totalCommandNum = v
+			info.TotalCommandNum = int64(v)
 		}
 		_, v, err = stringToKv(line[c * InfoTableChunkLength + 3], ":")
 		if err != nil {
 			return nil, err
 		} else {
-			info.totalWriteCommandNum = v
+			info.TotalWriteCommandNum = int64(v)
 		}
+		/* don't use qps from pika. codis will compute it by itself
 		_, v, err = stringToKv(line[c * InfoTableChunkLength + 4], ":")
 		if err != nil {
 			return nil, err
 		} else {
-			info.qps = v
+			info.Qps = v
 		}
 		_, v, err = stringToKv(line[c * InfoTableChunkLength + 5], ":")
 		if err != nil {
 			return nil, err
 		} else {
-			info.writeQps = v
+			info.WriteQps = v
 		}
 		_, v, err = stringToKv(line[c * InfoTableChunkLength + 6], ":")
 		if err != nil {
 			return nil, err
 		} else {
-			info.readQps = v
+			info.ReadQps = v
 		}
-		infoTable[info.id] = &info
+		 */
+		infoTable[info.Id] = &info
 	}
+
 	return infoTable, nil
 }
 

@@ -71,7 +71,7 @@ type Topom struct {
 
 		servers map[string]*RedisStats
 		proxies map[string]*ProxyStats
-		tables  map[int]*redis.InfoTable
+		qps     map[int]*redis.PiakInfoTable
 	}
 
 	ha struct {
@@ -124,6 +124,7 @@ func New(client models.Client, config *Config) (*Topom, error) {
 
 	s.stats.redisp = redis.NewPool(config.ProductAuth, time.Second*5)
 	s.stats.servers = make(map[string]*RedisStats)
+	s.stats.qps = make(map[int]*redis.PiakInfoTable)
 	s.stats.proxies = make(map[string]*ProxyStats)
 
 	s.managerOn = false
@@ -333,6 +334,11 @@ func (s *Topom) Stats() (*Stats, error) {
 
 	stats.Slots = ctx.slots
 	stats.Table = ctx.table
+	stats.QPS.TableStats = s.stats.qps
+	stats.QPS.TableStats = map[int]*redis.PiakInfoTable{}
+	for t := range s.stats.qps {
+		stats.QPS.TableStats[t] = s.stats.qps[t]
+	}
 
 	stats.Group.Models = models.SortGroup(ctx.group)
 	stats.Group.Stats = map[string]*RedisStats{}
@@ -383,6 +389,10 @@ type Stats struct {
 		Models []*models.Proxy        `json:"models"`
 		Stats  map[string]*ProxyStats `json:"stats"`
 	} `json:"proxy"`
+
+	QPS struct{
+		TableStats map[int]*redis.PiakInfoTable `json:"table_stats"`
+	} `json:"qps"`
 
 	SlotAction struct {
 		Interval int64 `json:"interval"`
