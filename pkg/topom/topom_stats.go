@@ -20,6 +20,7 @@ type RedisStats struct {
 
 	Sentinel map[string]*redis.SentinelGroup `json:"sentinel,omitempty"`
 
+	TableStats map[int]*redis.PiakInfoTable `json:"table_stats"`
 	UnixTime int64 `json:"unixtime"`
 	Timeout  bool  `json:"timeout,omitempty"`
 }
@@ -34,7 +35,7 @@ func (s *Topom) newRedisStats(addr string, timeout time.Duration, do func(addr s
 		if err != nil {
 			stats.Error = rpc.NewRemoteError(err)
 		} else {
-			stats.Stats, stats.Sentinel = p.Stats, p.Sentinel
+			stats.Stats, stats.Sentinel, stats.TableStats = p.Stats, p.Sentinel, p.TableStats
 		}
 	}()
 
@@ -65,11 +66,23 @@ func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) 
 	for _, g := range ctx.group {
 		for _, x := range g.Servers {
 			goStats(x.Addr, func(addr string) (*RedisStats, error) {
+				stats := &RedisStats{}
 				m, err := s.stats.redisp.InfoFull(addr)
 				if err != nil {
 					return nil, err
 				}
-				return &RedisStats{Stats: m}, nil
+				stats.Stats = m
+				for _, g := range ctx.group {
+					if len(g.Servers) != 0 && g.Servers[0] != nil && addr == g.Servers[0].Addr {
+						t, err := s.stats.redisp.InfoTable(addr)
+						if err != nil {
+							return nil, err
+						}
+						stats.TableStats = t
+						break
+					}
+				}
+				return stats, nil
 			})
 		}
 	}
@@ -99,6 +112,56 @@ func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) 
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		tableStats := make(map[int]*redis.PiakInfoTable)
+		for addr, cur := range stats {
+			last := s.stats.servers[addr]
+			if last != nil {
+				duration := cur.UnixTime - last.UnixTime
+				for id, t := range cur.TableStats {
+					var totalQPSPerGroup int64
+					var writeQPSPerGroup int64
+					var readQPSPerGroup int64
+					if _, ok := last.TableStats[id]; ok == true {
+						totalQPSPerGroup = (t.TotalCommandNum - last.TableStats[id].TotalCommandNum) / duration
+						writeQPSPerGroup = (t.TotalWriteCommandNum - last.TableStats[id].TotalWriteCommandNum) / duration
+						readQPSPerGroup = totalQPSPerGroup - writeQPSPerGroup
+					}
+					if _, ok := tableStats[id]; ok == false {
+						tableStats[id] = &redis.PiakInfoTable{
+							Id:                   id,
+							PartitionNum:         t.PartitionNum,
+							TotalCommandNum:      0,
+							TotalWriteCommandNum: 0,
+							Qps:                  0,
+							WriteQps:             0,
+							ReadQps:              0,
+						}
+					}
+					tableStats[id].TotalCommandNum += t.TotalCommandNum
+					tableStats[id].TotalWriteCommandNum += t.TotalWriteCommandNum
+					tableStats[id].Qps += totalQPSPerGroup
+					tableStats[id].WriteQps += writeQPSPerGroup
+					tableStats[id].ReadQps += readQPSPerGroup
+				}
+			} else {
+				for id, t := range cur.TableStats {
+					if _, ok := tableStats[id]; ok == false {
+						tableStats[id] = &redis.PiakInfoTable{
+							Id:                   id,
+							PartitionNum:         t.PartitionNum,
+							TotalCommandNum:      0,
+							TotalWriteCommandNum: 0,
+							Qps:                  0,
+							WriteQps:             0,
+							ReadQps:              0,
+						}
+					}
+					tableStats[id].TotalCommandNum += t.TotalCommandNum
+					tableStats[id].TotalWriteCommandNum += t.TotalWriteCommandNum
+				}
+			}
+		}
+		s.stats.qps = tableStats
 		s.stats.servers = stats
 	}()
 	return &fut, nil
