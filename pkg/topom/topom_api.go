@@ -108,6 +108,7 @@ func newApiServer(t *Topom) http.Handler {
 			r.Put("/remove/:xauth/:tid", api.RemoveTable)
 			r.Put("/rename/:xauth/:tid/:name/:auth", api.RenameTable)
 			r.Put("/meta/:xauth/:tid", api.SetTableMeta)
+			r.Put("/block/:xauth/:tid/:block", api.SetTableBlock)
 			r.Get("/list/:xauth/:tid", api.ListTable)
 			r.Get("/get/:xauth/:tid", api.GetTable)
 			r.Get("/meta/:xauth", api.GetTableMeta)
@@ -602,6 +603,34 @@ func (s *apiServer) SetTableMeta(params martini.Params) (int, string) {
 		return rpc.ApiResponseError(err)
 	}
 	if  err := s.topom.SetTableMeta(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson("OK")
+	}
+}
+
+func (s *apiServer) SetTableBlock(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	text, err := s.parseString(params, "block")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	var block bool
+	switch text {
+	case "true":
+		block = true
+	case "false":
+		block = false
+	default:
+		return rpc.ApiResponseError(fmt.Errorf("block accept bool type"))
+	}
+	if  err := s.topom.SetTableBlock(tid, block); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
@@ -1164,6 +1193,11 @@ func (c *ApiClient) GetTableMeta()  (int, error) {
 
 func (c *ApiClient) SetTableMeta( tid int)  error {
 	url := c.encodeURL("/api/topom/table/meta/%s/%d", c.xauth, tid)
+	return  rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) SetTableBlock(tid int, block bool)  error {
+	url := c.encodeURL("/api/topom/table/block/%s/%d/%t", c.xauth, tid, block)
 	return  rpc.ApiPutJson(url, nil, nil)
 }
 

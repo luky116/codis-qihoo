@@ -52,6 +52,7 @@ func (s *Topom) CreateTable(name string, num ,id int, auth string)  error {
 		Name:		name,
 		MaxSlotMum: num,
 		Auth:		auth,
+		IsBlocked:  false,
 	}
 	if err := s.storeCreateTable(t); err != nil {
 		return err
@@ -173,5 +174,25 @@ func (s *Topom) SetTableMeta(id int) error{
 	return s.storeCreateTableMeta(tm)
 }
 
-
-
+func (s *Topom) SetTableBlock(tid int, isBlock bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ctx, err := s.newContext()
+	if err != nil {
+		return  err
+	}
+	t, ok := ctx.table[tid]
+	if ok == false {
+		return  errors.Errorf("table-[%d] dose not exist", tid)
+	}
+	defer s.dirtyTableCache(tid)
+	t.IsBlocked = isBlock
+	if err := s.storeUpdateTable(t); err != nil {
+		return err
+	}
+	if err := s.syncFillTable(ctx, t); err != nil {
+		log.Warnf("table-[%s] tid-[%d] sync to proxy failed", t.Name, t.Id)
+		return  err
+	}
+	return nil
+}

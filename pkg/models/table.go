@@ -9,8 +9,7 @@ type Table struct {
 	Name	string		`json:"name"`
 	MaxSlotMum int		`json:"max_slot_mum"`
 	Auth    string		`json:"auth,omitempty"`
-//	Slots   []*Slot 	`json:"slots"`
-//	Group  []*Group		`json:"groups"`
+	IsBlocked bool		`json:"is_blocked,omitempty"`
 }
 
 type TableMeta struct {

@@ -43,6 +43,7 @@ type Session struct {
 	start sync.Once
 
 	broken atomic2.Bool
+	blocked bool
 	config *Config
 
 	authorized     bool
@@ -76,7 +77,7 @@ func NewSession(sock net.Conn, config *Config) *Session {
 	s := &Session{
 		Conn: c, config: config,
 		CreateUnix: time.Now().Unix(),
-		authorizeTable: -1,
+		authorizeTable: -1, blocked:false,
 	}
 	s.stats.opmap = make(map[string]*opStats, 16)
 	log.Infof("session [%p] create: %s", s, s)
@@ -194,6 +195,9 @@ func (s *Session) loopReader(tasks *RequestChan, d *Router) (err error) {
 			}
 		} else {
 			tasks.PushBack(r)
+			if s.blocked == true {
+				return nil
+			}
 		}
 	}
 	return nil
@@ -283,14 +287,16 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 		r.Resp = redis.NewErrorf("DB-[%d] NOAUTH Authentication required", s.database)
 		return nil
 	}
-//	if !s.authorized {
-//		if s.config.SessionAuth != "" {
-//			r.Resp = redis.NewErrorf("NOAUTH Authentication required")
-//			return nil
-//		}
-//		s.authorized = true
-//	}
 
+	if b, err := d.isBlocked(r.Database); err != nil {
+		return err
+	} else {
+		s.blocked = b
+		if b == true {
+			r.Resp = redis.NewErrorf("DB-[%d] is blocked because of in the blacklist", s.database)
+			return nil
+		}
+	}
 	switch opstr {
 	case "PING":
 		return s.handleRequestPing(r, d)

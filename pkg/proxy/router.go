@@ -110,6 +110,7 @@ var (
 	ErrInvalidSlotId = errors.New("use of invalid slot id")
 	ErrInvalidTableId = errors.New("use of invalid table id")
 	ErrInvalidMethod = errors.New("use of invalid forwarder method")
+	ErrTableBlocked = errors.New("table is blocked")
 )
 
 
@@ -133,6 +134,16 @@ func (s *Router) GetTable(tid int) *models.Table {
 		return t
 	}
 	return nil
+}
+
+func (s *Router) isBlocked(tid int) (bool, error) {
+	s.tableMu.RLock()
+	defer s.tableMu.RUnlock()
+	if t, ok := s.table[tid]; ok == true {
+		return t.IsBlocked, nil
+	} else {
+		return false,  ErrInvalidTableId
+	}
 }
 
 func (s *Router) getSlotNum(tid int) (int, error) {

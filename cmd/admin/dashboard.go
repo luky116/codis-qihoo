@@ -85,6 +85,8 @@ func (t *cmdDashboard) Main(d map[string]interface{}) {
 	case d["--get-table-meta"].(bool):
 		fallthrough
 	case d["--set-table-meta"].(bool):
+		fallthrough
+	case d["--set-table-block"].(bool):
 		t.handleTableCommand(d)
 
 	case d["--sentinel-add"].(bool):
@@ -753,9 +755,8 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 		log.Debugf("call rpc table-list OK")
 
 		for _, t := range s.Table {
-			fmt.Printf("table ID: %d, table name: %s, slots num: %d, auth: %s\n", t.Id, t.Name, t.MaxSlotMum, t.Auth)
+			fmt.Printf("table ID: %d, table name: %s, slots num: %d, auth: %s, blocked: %t\n", t.Id, t.Name, t.MaxSlotMum, t.Auth, t.IsBlocked)
 		}
-		fmt.Println()
 	case d["--set-table-meta"].(bool):
 
 		tid := utils.ArgumentIntegerMust(d, "--tid")
@@ -778,6 +779,16 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 			log.PanicErrorf(err, "json marshal failed")
 		}
 		fmt.Println(string(b))
+	case d["--set-table-block"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+		value := d["--enable"].(bool)
+
+		log.Debugf("call rpc set-table-block to dashboard %s", t.addr)
+		if err := c.SetTableBlock(tid, value); err != nil {
+			log.PanicErrorf(err, "call rpc set-table-block to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc set-table-block OK")
 	}
 }
 
