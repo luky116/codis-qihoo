@@ -637,8 +637,18 @@ func (s *Session) incrOpStats(r *Request, t redis.RespType) {
 	e.nsecs.Add(time.Now().UnixNano() - r.UnixNano)
 	switch t {
 	case redis.TypeError:
+    log.Warnf("redis response error, request:%s, respose:%s", getCommandFromResp(r.Multi), string(r.Resp.Value))
 		e.redis.errors.Incr()
 	}
+}
+
+func getCommandFromResp(m []*redis.Resp) string {
+  var s string
+  for _, arg := range m {
+      s += string(arg.Value)
+      s += "@@"
+  }
+  return s
 }
 
 func (s *Session) incrOpFails(r *Request, err error) error {

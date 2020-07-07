@@ -42,3 +42,4 @@ sentinel_client_reconfig_script = ""
 manager_ping_period = 1000
 manager_info_period = 1000
 manager_down_after = 10
+
