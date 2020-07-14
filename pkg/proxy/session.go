@@ -237,7 +237,7 @@ func (s *Session) loopWriter(tasks *RequestChan) (err error) {
 		if err := p.Flush(fflush); err != nil {
 			return s.incrOpFails(r, err)
 		} else {
-			s.incrOpStats(r, resp.Type)
+			s.incrOpStats(r, resp)
 		}
 		if fflush {
 			s.flushOpStats(false)
@@ -631,13 +631,13 @@ func (s *Session) getOpStats(opstr string) *opStats {
 	return e
 }
 
-func (s *Session) incrOpStats(r *Request, t redis.RespType) {
+func (s *Session) incrOpStats(r *Request, resp *redis.Resp) {
 	e := s.getOpStats(r.OpStr)
 	e.calls.Incr()
 	e.nsecs.Add(time.Now().UnixNano() - r.UnixNano)
-	switch t {
+	switch resp.Type {
 	case redis.TypeError:
-    log.Warnf("redis response error, request:%s, respose:%s", getCommandFromResp(r.Multi), string(r.Resp.Value))
+    log.Warnf("redis response error, request:%s, respose:%s", getCommandFromResp(r.Multi), string(resp.Value))
 		e.redis.errors.Incr()
 	}
 }
