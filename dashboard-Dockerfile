@@ -14,5 +14,5 @@ RUN make -C ${CODIS} build-all
 WORKDIR /codis
 
 
-ENTRYPOINT ["codis-dashboard", "--log=./log/dashboard.log", "--config=/gopath/src/github.com/CodisLabs/codis/config/dashboard.toml", "--pidfile=./codis-dashboard.pid", "--log-level=INFO"] 
+ENTRYPOINT ["codis-dashboard", "--log=./log/dashboard.log", "--config=/gopath/src/github.com/CodisLabs/codis/config/dashboard.toml", "--pidfile=./codis-dashboard.pid", "--log-level=WARN","--remove-lock"] 
 
