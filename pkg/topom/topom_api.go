@@ -104,15 +104,26 @@ func newApiServer(t *Topom) http.Handler {
 			r.Get("/info/:addr", api.InfoServer)
 		})
 		r.Group("/table", func(r martini.Router) {
-			r.Put("/create/:xauth/:name/:num/:tid/:auth", api.CreateTable)
+			r.Put("/create/:xauth/:name/:num/:tid", api.CreateTable)
+			r.Put("/createforMeta/:xauth/:name/:num/:tid", api.CreateTableForMeta)
+			r.Put("/createforPika/:xauth/:tid", api.CreateTableForPika)
 			r.Put("/remove/:xauth/:tid", api.RemoveTable)
+			r.Put("/removeFromMeta/:xauth/:tid", api.RemoveTableFromMeta)
+			r.Put("/removeFromPika/:xauth/:tid", api.RemoveTableFromPika)
 			r.Put("/rename/:xauth/:tid/:name/:auth", api.RenameTable)
 			r.Put("/meta/:xauth/:tid", api.SetTableMeta)
 			r.Put("/block/:xauth/:tid/:block", api.SetTableBlock)
 			r.Get("/list/:xauth/:tid", api.ListTable)
 			r.Get("/get/:xauth/:tid", api.GetTable)
 			r.Get("/meta/:xauth", api.GetTableMeta)
+			r.Get("/distribution/:xauth/:tid", api.GetDistribution)
 
+		})
+		r.Group("/pika", func(r martini.Router) {
+			r.Put("/addslot/:xauth/:tid", api.PikaAddSlot)
+			r.Put("/delslot/:xauth/:tid", api.PikaDelSlot)
+			r.Put("/slaveof/:xauth/:tid", api.PikaSlotsSlaveof)
+			r.Put("/slaveofnoone/:xauth/:tid", api.PikaSlotsSlaveofNoOne)
 		})
 		r.Group("/slots", func(r martini.Router) {
 			r.Group("/action", func(r martini.Router) {
@@ -508,14 +519,48 @@ func (s *apiServer) CreateTable(params martini.Params) (int, string) {
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	auth, err := s.parseString(params, "auth")
-	if err != nil {
-		return rpc.ApiResponseError(err)
-	}
-	if  err := s.topom.CreateTable(name, num, tid, auth); err != nil {
+	if err := s.topom.CreateTable(name, num, tid); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
+	}
+}
+
+func (s *apiServer) CreateTableForMeta(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	name, err := s.parseString(params, "name")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	num, err := s.parseInteger(params, "num")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if err := s.topom.CreateTableForMeta(name, num, tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson("OK")
+	}
+}
+
+func (s *apiServer) CreateTableForPika(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if results, err := s.topom.CreateTableForPika(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(results)
 	}
 }
 
@@ -531,6 +576,36 @@ func (s *apiServer) RemoveTable(params martini.Params) (int, string) {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
+	}
+}
+
+func (s *apiServer) RemoveTableFromMeta(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if err := s.topom.RemoveTableFromMeta(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson("OK")
+	}
+}
+
+func (s *apiServer) RemoveTableFromPika(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if results, err := s.topom.RemoveTableFromPika(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(results)
 	}
 }
 
@@ -602,7 +677,7 @@ func (s *apiServer) SetTableMeta(params martini.Params) (int, string) {
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if  err := s.topom.SetTableMeta(tid); err != nil {
+	if err := s.topom.SetTableMeta(tid); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
@@ -630,10 +705,85 @@ func (s *apiServer) SetTableBlock(params martini.Params) (int, string) {
 	default:
 		return rpc.ApiResponseError(fmt.Errorf("block accept bool type"))
 	}
-	if  err := s.topom.SetTableBlock(tid, block); err != nil {
+	if err := s.topom.SetTableBlock(tid, block); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson("OK")
+	}
+}
+
+func (s *apiServer) GetDistribution(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if distribution, err := s.topom.GetDistribution(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(distribution)
+	}
+}
+
+func (s *apiServer) PikaAddSlot(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if results, err := s.topom.PikaAddSlot(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(results)
+	}
+}
+
+func (s *apiServer) PikaDelSlot(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if results, err := s.topom.PikaDelSlot(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(results)
+	}
+}
+
+func (s *apiServer) PikaSlotsSlaveof(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if results, err := s.topom.PikaSlotsSlaveof(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(results)
+	}
+}
+
+func (s *apiServer) PikaSlotsSlaveofNoOne(params martini.Params) (int, string) {
+	if err := s.verifyXAuth(params); err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	tid, err := s.parseInteger(params, "tid")
+	if err != nil {
+		return rpc.ApiResponseError(err)
+	}
+	if results, err := s.topom.PikaSlotsSlaveofNoOne(tid); err != nil {
+		return rpc.ApiResponseError(err)
+	} else {
+		return rpc.ApiResponseJson(results)
 	}
 }
 
@@ -1067,7 +1217,7 @@ func (c *ApiClient) LogLevel(level log.LogLevel) error {
 }
 
 func (c *ApiClient) GetManager() (string, error) {
-	url := c.encodeURL("/api/topom/manager/%s", c.xauth )
+	url := c.encodeURL("/api/topom/manager/%s", c.xauth)
 	var status string
 	if err := rpc.ApiGetJson(url, &status); err != nil {
 		return "", err
@@ -1076,7 +1226,7 @@ func (c *ApiClient) GetManager() (string, error) {
 }
 
 func (c *ApiClient) SetManager(op string) error {
-	url := c.encodeURL("/api/topom/manager/%s/%s", c.xauth, op )
+	url := c.encodeURL("/api/topom/manager/%s/%s", c.xauth, op)
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
@@ -1167,22 +1317,42 @@ func (c *ApiClient) EnableReplicaGroupsAll(value bool) error {
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) CreateTable(name string, num, tid int, auth string)  error {
-	url := c.encodeURL("/api/topom/table/create/%s/%s/%d/%d/%s", c.xauth, name, num, tid, auth)
-	return  rpc.ApiPutJson(url, nil, nil)
+func (c *ApiClient) CreateTable(name string, num, tid int) error {
+	url := c.encodeURL("/api/topom/table/create/%s/%s/%d/%d", c.xauth, name, num, tid)
+	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) RemoveTable(tid int)  error {
+func (c *ApiClient) CreateTableForMeta(name string, num, tid int) error {
+	url := c.encodeURL("/api/topom/table/createforMeta/%s/%s/%d/%d", c.xauth, name, num, tid)
+	return rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) CreateTableForPika(tid int) error {
+	url := c.encodeURL("/api/topom/table/createforPika/%s/%d", c.xauth, tid)
+	return rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) RemoveTable(tid int) error {
 	url := c.encodeURL("/api/topom/table/remove/%s/%d", c.xauth, tid)
-	return  rpc.ApiPutJson(url, nil, nil)
+	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) RenameTable(tid int, name, auth string)  error {
+func (c *ApiClient) RemoveTableFromMeta(tid int) error {
+	url := c.encodeURL("/api/topom/table/removeFromMeta/%s/%d", c.xauth, tid)
+	return rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) RemoveTableFromPika(tid int) error {
+	url := c.encodeURL("/api/topom/table/removeFromPika/%s/%d", c.xauth, tid)
+	return rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) RenameTable(tid int, name, auth string) error {
 	url := c.encodeURL("/api/topom/table/rename/%s/%d/%s/%s", c.xauth, tid, name, auth)
-	return  rpc.ApiPutJson(url, nil, nil)
+	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) GetTableMeta()  (int, error) {
+func (c *ApiClient) GetTableMeta() (int, error) {
 	url := c.encodeURL("/api/topom/table/meta/%s", c.xauth)
 	var meta int
 	if err := rpc.ApiGetJson(url, &meta); err != nil {
@@ -1191,14 +1361,43 @@ func (c *ApiClient) GetTableMeta()  (int, error) {
 	return meta, nil
 }
 
-func (c *ApiClient) SetTableMeta( tid int)  error {
+func (c *ApiClient) SetTableMeta(tid int) error {
 	url := c.encodeURL("/api/topom/table/meta/%s/%d", c.xauth, tid)
-	return  rpc.ApiPutJson(url, nil, nil)
+	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) SetTableBlock(tid int, block bool)  error {
+func (c *ApiClient) GetDistribution(tid int) ([]*SlotDistribution, error) {
+	url := c.encodeURL("/api/topom/table/distribution/%s/%d", c.xauth, tid)
+	d := []*SlotDistribution{}
+	if err := rpc.ApiGetJson(url, &d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func (c *ApiClient) PikaAddSlot(tid int) error {
+	url := c.encodeURL("/api/topom/pika/addslot/%s/%d", c.xauth, tid)
+	return rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) PikaDelSlot(tid int) error {
+	url := c.encodeURL("/api/topom/pika/delslot/%s/%d", c.xauth, tid)
+	return rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) PikaSlaveof(tid int) error {
+	url := c.encodeURL("/api/topom/pika/slaveof/%s/%d", c.xauth, tid)
+	return rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) PikaSlaveofNoOne(tid int) error {
+	url := c.encodeURL("/api/topom/pika/slaveofnoone/%s/%d", c.xauth, tid)
+	return rpc.ApiPutJson(url, nil, nil)
+}
+
+func (c *ApiClient) SetTableBlock(tid int, block bool) error {
 	url := c.encodeURL("/api/topom/table/block/%s/%d/%t", c.xauth, tid, block)
-	return  rpc.ApiPutJson(url, nil, nil)
+	return rpc.ApiPutJson(url, nil, nil)
 }
 
 func (c *ApiClient) AddSentinel(addr string) error {
@@ -1246,7 +1445,7 @@ func (c *ApiClient) SlotCreateActionRange(tid, beg, end int, gid int) error {
 }
 
 func (c *ApiClient) SlotRemoveAction(tid, sid int) error {
-	url := c.encodeURL("/api/topom/slots/action/remove/%s/%d/%d", c.xauth, tid,  sid)
+	url := c.encodeURL("/api/topom/slots/action/remove/%s/%d/%d", c.xauth, tid, sid)
 	return rpc.ApiPutJson(url, nil, nil)
 }
 

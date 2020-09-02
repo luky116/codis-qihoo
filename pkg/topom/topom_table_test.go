@@ -11,13 +11,9 @@ func TestCreateTable(x *testing.T) {
 
 	var name = "table1"
 	const num = 128
+	var id = -1
+	var auth = "abc"
 
-	assert.MustNoError(t.CreateTable(name,num))
+	assert.MustNoError(t.CreateTable(name, num, id, auth))
 
-}
-
-func createTable(t *Topom) {
-	var name = "table1"
-	const num = 128
-	assert.MustNoError(t.CreateTable(name,num))
 }

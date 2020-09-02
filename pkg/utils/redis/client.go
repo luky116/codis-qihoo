@@ -5,6 +5,7 @@ package redis
 
 import (
 	"container/list"
+	"fmt"
 	"github.com/CodisLabs/codis/pkg/utils/log"
 	"net"
 	"strconv"
@@ -35,7 +36,7 @@ type Client struct {
 
 type InfoTable struct {
 	Tid  int
-	Slot map[int] *InfoSlot
+	Slot map[int]*InfoSlot
 }
 
 type InfoSlot struct {
@@ -51,9 +52,9 @@ type InfoSlot struct {
 }
 
 type Slave struct {
-	Addr string
+	Addr   string
 	Status string
-	Lag int
+	Lag    int
 }
 
 type PiakInfoTable struct {
@@ -65,6 +66,7 @@ type PiakInfoTable struct {
 	WriteQps             int64
 	ReadQps              int64
 }
+
 const InfoTableChunkLength int = 7
 
 func stringToKv(s, sep string) (string, int, error) {
@@ -73,43 +75,43 @@ func stringToKv(s, sep string) (string, int, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	return 	strings.TrimPrefix(kv[0], " "), v, nil
+	return strings.TrimPrefix(kv[0], " "), v, nil
 }
 
-func (c *Client)GetInfoTable() (map[int]*PiakInfoTable, error) {
+func (c *Client) GetInfoTable() (map[int]*PiakInfoTable, error) {
 	text, err := redigo.String(c.Do("pkcluster", "info", "table"))
 	if err != nil {
-		log.Infof("send pkcluster info err: %s",errors.Trace(err))
+		log.Infof("send pkcluster info err: %s", errors.Trace(err))
 		return nil, errors.Trace(err)
 	}
 	lineNum := strings.Count(text, "\r\n")
 	chunkNum := lineNum / InfoTableChunkLength
-	if lineNum == 0 || lineNum % InfoTableChunkLength != 0 {
+	if lineNum == 0 || lineNum%InfoTableChunkLength != 0 {
 		log.Info("pika pkcluster  info table format error")
 	}
 	line := strings.Split(text, "\r\n")
-	infoTable := make(map[int]* PiakInfoTable)
+	infoTable := make(map[int]*PiakInfoTable)
 	for c := 0; c < chunkNum; c++ {
 		var info PiakInfoTable
-		_, v, err := stringToKv(line[c * InfoTableChunkLength], ":")
+		_, v, err := stringToKv(line[c*InfoTableChunkLength], ":")
 		if err != nil {
 			return nil, err
 		} else {
 			info.Id = v
 		}
-		_, v, err = stringToKv(line[c * InfoTableChunkLength + 1], ":")
+		_, v, err = stringToKv(line[c*InfoTableChunkLength+1], ":")
 		if err != nil {
 			return nil, err
 		} else {
 			info.PartitionNum = v
 		}
-		_, v, err = stringToKv(line[c * InfoTableChunkLength + 2], ":")
+		_, v, err = stringToKv(line[c*InfoTableChunkLength+2], ":")
 		if err != nil {
 			return nil, err
 		} else {
 			info.TotalCommandNum = int64(v)
 		}
-		_, v, err = stringToKv(line[c * InfoTableChunkLength + 3], ":")
+		_, v, err = stringToKv(line[c*InfoTableChunkLength+3], ":")
 		if err != nil {
 			return nil, err
 		} else {
@@ -134,7 +136,7 @@ func (c *Client)GetInfoTable() (map[int]*PiakInfoTable, error) {
 		} else {
 			info.ReadQps = v
 		}
-		 */
+		*/
 		infoTable[info.Id] = &info
 	}
 
@@ -262,6 +264,7 @@ func (c *Client) Info() (map[string]string, error) {
 	}
 	return info, nil
 }
+
 /* info slot
 (db0:0) binlog_offset=0 0,safety_purge=none
   Role: Master
@@ -277,20 +280,20 @@ func (c *Client) Info() (map[string]string, error) {
 func (c *Client) InfoSlot() (map[int]*InfoTable, error) {
 	text, err := redigo.String(c.Do("pkcluster", "info", "slot"))
 	if err != nil {
-		log.Infof("send pkcluster info err: %s",errors.Trace(err))
+		log.Infof("send pkcluster info err: %s", errors.Trace(err))
 		return nil, errors.Trace(err)
 	}
 	chunk := strings.Split(text, "\r\n\r\n")
-	table := make(map [int]*InfoTable)
+	table := make(map[int]*InfoTable)
 	var tid int
 	for _, field := range chunk {
 		line := strings.Split(field, "\r\n")
-		if len(line) >=3 {
+		if len(line) >= 3 {
 			kv := strings.SplitN(line[0], ":", 2)
-			t := strings.TrimPrefix(kv[0],"(db")
+			t := strings.TrimPrefix(kv[0], "(db")
 			skv := strings.SplitN(kv[1], ")", 2)
 			s := skv[0]
-			bkv := strings.SplitN(skv[1], ",", 2 )
+			bkv := strings.SplitN(skv[1], ",", 2)
 			fkv := strings.SplitN(strings.TrimPrefix(bkv[0], " binlog_offset="), " ", 2)
 			fileNum := fkv[0]
 			offset := fkv[1]
@@ -298,8 +301,8 @@ func (c *Client) InfoSlot() (map[int]*InfoTable, error) {
 			if m, err := strconv.Atoi(t); err == nil {
 				tid = m
 				if _, ok := table[tid]; ok != true {
-					slot := make(map [int]*InfoSlot)
-					infoTable := InfoTable{Tid: tid, Slot:slot}
+					slot := make(map[int]*InfoSlot)
+					infoTable := InfoTable{Tid: tid, Slot: slot}
 					table[tid] = &infoTable
 				}
 			} else {
@@ -322,7 +325,7 @@ func (c *Client) InfoSlot() (map[int]*InfoTable, error) {
 			}
 
 			base := 0
-			
+
 			kv = strings.SplitN(line[1], "=", 2)
 			if strings.TrimSpace(kv[0]) == "consensus_last_log" {
 				base = 1
@@ -338,7 +341,7 @@ func (c *Client) InfoSlot() (map[int]*InfoTable, error) {
 				base = 0
 			}
 
-			kv = strings.SplitN(line[base + 1], ":", 2)
+			kv = strings.SplitN(line[base+1], ":", 2)
 			infoSlot.Role = strings.TrimSpace(kv[1])
 			if infoSlot.Role == "Master" {
 				kv = strings.SplitN(line[base+2], ":", 2)
@@ -379,7 +382,7 @@ func (c *Client) Ping() (bool, error) {
 		return false, errors.Trace(err)
 	}
 	switch text {
-	case "pong","PONG":
+	case "pong", "PONG":
 		return false, nil
 	default:
 		return true, nil
@@ -434,6 +437,39 @@ func (c *Client) InfoFull() (map[string]string, error) {
 	}
 }
 
+func (c *Client) CreateTable(t, s int) error {
+	if _, err := c.Do("pkcluster", "addtable", t, s); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
+func (c *Client) DeleteTable(addr string, t int) error {
+	log.Warnf("addr-[%s] delete table-[%d]", addr, t)
+	if _, err := c.Do("pkcluster", "deltable", t); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
+func (c *Client) AddSlots(addr string, tid, beg, end int) error {
+	log.Warnf("addr-[%s]  table-[%d] add slots begin-[%d], end-[%d]", addr, tid, beg, end)
+	buf := fmt.Sprintf("%d-%d", beg, end)
+	if _, err := c.Do("pkcluster", "addslots", buf, tid); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
+func (c *Client) DelSlots(addr string, tid, beg, end int) error {
+	log.Warnf("addr-[%s]  table-[%d] delete slots begin-[%d], end-[%d]", addr, tid, beg, end)
+	buf := fmt.Sprintf("%d-%d", beg, end)
+	if _, err := c.Do("pkcluster", "delslots", buf, tid); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
 func (c *Client) SlotSlaveof(addr string, s, t int) error {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -458,30 +494,30 @@ func (c *Client) SlotSlaveofAll(addr string, t int) error {
 
 func (c *Client) SetMaster(master string) error {
 	/*
-	host, port, err := net.SplitHostPort(master)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	if _, err := c.Do("CONFIG", "SET", "masterauth", c.Auth); err != nil {
-		return errors.Trace(err)
-	}
-	if _, err := c.Do("SLAVEOF", host, port); err != nil {
-		return errors.Trace(err)
-	}
-	c.Send("MULTI")
-	c.Send("CONFIG", "SET", "masterauth", c.Auth)
-	c.Send("SLAVEOF", host, port)
-	c.Send("CONFIG", "REWRITE")
-	c.Send("CLIENT", "KILL", "TYPE", "normal")
-	values, err := redigo.Values(c.Do("EXEC"))
-	if err != nil {
-		return errors.Trace(err)
-	}
-	for _, r := range values {
-		if err, ok := r.(redigo.Error); ok {
+		host, port, err := net.SplitHostPort(master)
+		if err != nil {
 			return errors.Trace(err)
 		}
-	}
+		if _, err := c.Do("CONFIG", "SET", "masterauth", c.Auth); err != nil {
+			return errors.Trace(err)
+		}
+		if _, err := c.Do("SLAVEOF", host, port); err != nil {
+			return errors.Trace(err)
+		}
+		c.Send("MULTI")
+		c.Send("CONFIG", "SET", "masterauth", c.Auth)
+		c.Send("SLAVEOF", host, port)
+		c.Send("CONFIG", "REWRITE")
+		c.Send("CLIENT", "KILL", "TYPE", "normal")
+		values, err := redigo.Values(c.Do("EXEC"))
+		if err != nil {
+			return errors.Trace(err)
+		}
+		for _, r := range values {
+			if err, ok := r.(redigo.Error); ok {
+				return errors.Trace(err)
+			}
+		}
 	*/
 	return nil
 }
@@ -719,7 +755,7 @@ func (p *Pool) InfoFull(addr string) (_ map[string]string, err error) {
 	return c.InfoFull()
 }
 
-func (p *Pool) InfoSlot(addr string) ( map[int]*InfoTable,  error) {
+func (p *Pool) InfoSlot(addr string) (map[int]*InfoTable, error) {
 	c, err := p.GetClient(addr)
 	if err != nil {
 		return nil, err
@@ -728,7 +764,7 @@ func (p *Pool) InfoSlot(addr string) ( map[int]*InfoTable,  error) {
 	return c.InfoSlot()
 }
 
-func (p *Pool) Ping(addr string) ( bool,  error) {
+func (p *Pool) Ping(addr string) (bool, error) {
 	c, err := p.GetClient(addr)
 	if err != nil {
 		return false, err
@@ -737,22 +773,70 @@ func (p *Pool) Ping(addr string) ( bool,  error) {
 	return c.Ping()
 }
 
+func (p *Pool) CreateTable(tid, slotNum int) func(string) error {
+	return func(addr string) error {
+		c, err := p.GetClient(addr)
+		if err != nil {
+			return err
+		}
+		defer p.PutClient(c)
+		log.Warnf("addr-[%s]create table-[%d] slot num-[%d]", addr, tid, slotNum)
+		return c.CreateTable(tid, slotNum)
+	}
+}
+
+func (p *Pool) DeleteTable(tid int) func(string) error {
+	return func(addr string) error {
+		c, err := p.GetClient(addr)
+		if err != nil {
+			return err
+		}
+		defer p.PutClient(c)
+		return c.DeleteTable(addr, tid)
+	}
+}
+
+func (p *Pool) AddSlots(tid, beg, end int) func(string) error {
+	return func(addr string) error {
+		c, err := p.GetClient(addr)
+		if err != nil {
+			return err
+		}
+		defer p.PutClient(c)
+		return c.AddSlots(addr, tid, beg, end)
+	}
+}
+
+func (p *Pool) DelSlots(tid, beg, end int) func(string) error {
+	return func(addr string) error {
+		c, err := p.GetClient(addr)
+		if err != nil {
+			return err
+		}
+		defer p.PutClient(c)
+		return c.DelSlots(addr, tid, beg, end)
+	}
+}
+
 func (p *Pool) SlotSlaveof(addr, mAddr string, sid, tid int) error {
 	c, err := p.GetClient(addr)
 	if err != nil {
-		return  err
+		return err
 	}
 	defer p.PutClient(c)
 	return c.SlotSlaveof(mAddr, sid, tid)
 }
 
-func (p *Pool) SlotSlaveofAll(addr,mAddr string, tid int) error {
-	c, err := p.GetClient(addr)
-	if err != nil {
-		return  err
+func (p *Pool) SlotSlaveofAll(mAddr string, tid int) func(string) error {
+	return func(addr string) error {
+		c, err := p.GetClient(addr)
+		if err != nil {
+			return err
+		}
+		defer p.PutClient(c)
+		log.Warnf("addr-[%s] slave of %s table-[%d]", addr, mAddr, tid)
+		return c.SlotSlaveofAll(mAddr, tid)
 	}
-	defer p.PutClient(c)
-	return c.SlotSlaveofAll(mAddr, tid)
 }
 
 type InfoCache struct {

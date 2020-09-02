@@ -73,10 +73,17 @@ func (t *cmdDashboard) Main(d map[string]interface{}) {
 	case d["--promote-server"].(bool):
 		t.handleGroupCommand(d)
 
-
 	case d["--create-table"].(bool):
 		fallthrough
+	case d["--create-table-for-meta"].(bool):
+		fallthrough
+	case d["--create-table-for-pika"].(bool):
+		fallthrough
 	case d["--remove-table"].(bool):
+		fallthrough
+	case d["--remove-table-from-meta"].(bool):
+		fallthrough
+	case d["--remove-table-from-pika"].(bool):
 		fallthrough
 	case d["--rename-table"].(bool):
 		fallthrough
@@ -87,7 +94,18 @@ func (t *cmdDashboard) Main(d map[string]interface{}) {
 	case d["--set-table-meta"].(bool):
 		fallthrough
 	case d["--set-table-block"].(bool):
+		fallthrough
+	case d["--distribution"].(bool):
 		t.handleTableCommand(d)
+
+	case d["--add-slot-for-pika"].(bool):
+		fallthrough
+	case d["--del-slot-for-pika"].(bool):
+		fallthrough
+	case d["--pika-slaveof"].(bool):
+		fallthrough
+	case d["--pika-slaveof-no-one"].(bool):
+		t.handlePikaCommand(d)
 
 	case d["--sentinel-add"].(bool):
 		fallthrough
@@ -220,12 +238,12 @@ func (t *cmdDashboard) handleManagerCommnad(d map[string]interface{}) {
 			log.PanicErrorf(err, "json marshal failed")
 		}
 		fmt.Println(string(b))
-	case d["--set-manager"].(bool) :
+	case d["--set-manager"].(bool):
 		value := d["--enable"].(bool)
 		var op string
 		if value == true {
 			op = "on"
-		}else {
+		} else {
 			op = "off"
 		}
 
@@ -273,7 +291,7 @@ func (t *cmdDashboard) handleSlotsCommand(d map[string]interface{}) {
 		gid, ok := utils.ArgumentInteger(d, "--gid")
 		if ok {
 			for _, slot := range o {
-				if 	slot.BackendAddrGroupId == gid {
+				if slot.BackendAddrGroupId == gid {
 					b, err := json.MarshalIndent(slot, "", "    ")
 					if err != nil {
 						log.PanicErrorf(err, "json marshal failed")
@@ -298,7 +316,7 @@ func (t *cmdDashboard) handleSlotsCommand(d map[string]interface{}) {
 		slots := []*models.SlotMapping{}
 		for i := beg; i <= end; i++ {
 			slots = append(slots, &models.SlotMapping{
-				Id: i, TableId:tid,
+				Id: i, TableId: tid,
 			})
 		}
 
@@ -701,6 +719,44 @@ func (t *cmdDashboard) handleGroupCommand(d map[string]interface{}) {
 		}
 	}
 }
+func (t *cmdDashboard) handlePikaCommand(d map[string]interface{}) {
+	c := t.newTopomClient()
+
+	switch {
+	case d["--add-slot-for-pika"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+		log.Debugf("call rpc add-slot to dashboard %s", t.addr)
+		if err := c.PikaAddSlot(tid); err != nil {
+			log.PanicErrorf(err, "call rpc add-slot to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc add-slot OK")
+	case d["--del-slot-for-pika"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+		log.Debugf("call rpc del-slot to dashboard %s", t.addr)
+		if err := c.PikaDelSlot(tid); err != nil {
+			log.PanicErrorf(err, "call rpc del-slot to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc del-slot OK")
+	case d["--pika-slaveof"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+		log.Debugf("call rpc pika salveof to dashboard %s", t.addr)
+		if err := c.PikaSlaveof(tid); err != nil {
+			log.PanicErrorf(err, "call rpc pika salveof to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc pika salveof OK")
+	case d["--pika-slaveof-no-one"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+		log.Debugf("call rpc pika salveof no one to dashboard %s", t.addr)
+		if err := c.PikaSlaveofNoOne(tid); err != nil {
+			log.PanicErrorf(err, "call rpc pika salveof no one to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc pika salveof no one OK")
+	}
+}
 
 func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 	c := t.newTopomClient()
@@ -710,7 +766,6 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 
 		name := utils.ArgumentMust(d, "--name")
 		num := utils.ArgumentIntegerMust(d, "--num")
-		auth := utils.ArgumentMust(d, "--auth")
 		tid, err := utils.ArgumentInteger(d, "--tid")
 		if err == false {
 			tid = -1
@@ -720,10 +775,35 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 			}
 		}
 		log.Debugf("call rpc create-table to dashboard %s", t.addr)
-		if  err := c.CreateTable(name, num, tid, auth); err != nil {
+		if err := c.CreateTable(name, num, tid); err != nil {
 			log.PanicErrorf(err, "call rpc create-Table to dashboard %s failed", t.addr)
 		}
-		log.Debugf("call rpc create-group OK")
+		log.Debugf("call rpc create-table OK")
+	case d["--create-table-for-meta"].(bool):
+
+		name := utils.ArgumentMust(d, "--name")
+		num := utils.ArgumentIntegerMust(d, "--num")
+		tid, err := utils.ArgumentInteger(d, "--tid")
+		if err == false {
+			tid = -1
+		} else {
+			if tid < 0 {
+				log.Panicf("create table for meta tid-[%d] is invalidated", tid)
+			}
+		}
+		log.Debugf("call rpc create-table-for-mata to dashboard %s", t.addr)
+		if err := c.CreateTableForMeta(name, num, tid); err != nil {
+			log.PanicErrorf(err, "call rpc create-Table to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc create-table OK")
+	case d["--create-table-for-pika"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+		log.Debugf("call rpc create-table-for-pika to dashboard %s", t.addr)
+		if err := c.CreateTableForPika(tid); err != nil {
+			log.PanicErrorf(err, "call rpc create-Table to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc create-table OK")
 	case d["--remove-table"].(bool):
 
 		tid := utils.ArgumentIntegerMust(d, "--tid")
@@ -733,6 +813,24 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 			log.PanicErrorf(err, "call rpc remove-table to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc remove-table OK")
+	case d["--remove-table-from-meta"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+
+		log.Debugf("call rpc remove-table-from-meta to dashboard %s", t.addr)
+		if err := c.RemoveTableFromMeta(tid); err != nil {
+			log.PanicErrorf(err, "call rpc remove-table-from-meta to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc remove-table-from-meta OK")
+	case d["--remove-table-from-pika"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+
+		log.Debugf("call rpc remove-table-from-pika to dashboard %s", t.addr)
+		if err := c.RemoveTableFromPika(tid); err != nil {
+			log.PanicErrorf(err, "call rpc remove-table-from-pika to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc remove-table-from-pika OK")
 	case d["--rename-table"].(bool):
 
 		tid := utils.ArgumentIntegerMust(d, "--tid")
@@ -789,6 +887,19 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 			log.PanicErrorf(err, "call rpc set-table-block to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc set-table-block OK")
+	case d["--distribution"].(bool):
+
+		tid := utils.ArgumentIntegerMust(d, "--tid")
+		log.Debugf("call rpc get distribution to dashboard %s", t.addr)
+		distribution, err := c.GetDistribution(tid)
+		if err != nil {
+			log.PanicErrorf(err, "call rpc get distribution to dashboard %s failed", t.addr)
+		}
+		log.Debugf("call rpc get distribution OK")
+
+		for _, dis := range distribution {
+			fmt.Printf("group ID: %d, Begin slot: %d, end slot: %d\n", dis.GroupId, dis.Begin, dis.End)
+		}
 	}
 }
 

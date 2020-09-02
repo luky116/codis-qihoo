@@ -578,11 +578,56 @@ Usage:
 
 #### 创建table
 ```
-./bin/codis-admin   --dashboard=127.0.0.1:18080  --create-table --name=table2 --num=10
+./bin/codis-admin   --dashboard=127.0.0.1:18080  --create-table --name=table2 --num=16
 ```
 name 表示table的名字
 
 num 表示设置table的slot数目
+创建table时，dashboard会自动生成auth密码。密码格式为 $table-name+randomstring
+* 创建table的过程会首先检查集群的状态，如果有pika超时或者下线，会返回并报错。
+* 在dashboard生成meta信息，如auth，blocking状态。
+* 发送命令给所有pika，创建table
+* 根据当前group状态，生成slot 分布。
+* 按照slot分布发送给各个group中的pika，创建slot
+* 发送命令给各个group中的pika，建立主从关系。
+#### 创建table meta
+```
+ ./bin/codis-admin   --dashboard=127.0.0.1:18080  --create-table-for-meta --name=table2 --num=16
+```
+该命令只在dashboard生成meta信息，不会向pika发送table生成命令。
+#### 查看初始slot分布
+```
+ ./bin/codis-admin   --dashboard=127.0.0.1:18080  --distribution --tid=2
+```
+该命令返回当前group分布时，初始slot分布情况。如果集群发生迁移，那么返回的slot分布与集群是不同的。
+#### pika 添加slot
+```
+ ./bin/codis-admin   --dashboard=127.0.0.1:18080  --add-slot-for-pika   --tid=2
+```
+该命令会根据集群中的table信息，计算slot分布，并在group中的pika创建slot
+#### 删除slot for pika
+```
+ ./bin/codis-admin   --dashboard=127.0.0.1:18080  --del-slot-for-pika   --tid=2
+```
+该命令会集群中所有pika中对应table的slot
+####  pika 中的table 建立主从关系
+```
+ ./bin/codis-admin   --dashboard=127.0.0.1:18080  --pika-slaveof   --tid=2
+```
+该命令会把group中pika建立主从关系。
+####  删除table
+```
+ ./bin/codis-admin   --dashboard=127.0.0.1:18080 --remove-table   --tid=ID 
+```
+*该命令会把pika中对应table的slot断开主从关系。
+* 删除pika中table的slot。
+* 删除pika中的table
+* 删除dashboard中的table
+#### 
+```
+ ./bin/codis-admin   --dashboard=127.0.0.1:18080 
+```
+
 #### 查看table
 ```
 ./bin/codis-admin --dashboard=127.0.0.1:18080  --list-table

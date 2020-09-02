@@ -21,8 +21,8 @@ type RedisStats struct {
 	Sentinel map[string]*redis.SentinelGroup `json:"sentinel,omitempty"`
 
 	TableStats map[int]*redis.PiakInfoTable `json:"table_stats"`
-	UnixTime int64 `json:"unixtime"`
-	Timeout  bool  `json:"timeout,omitempty"`
+	UnixTime   int64                        `json:"unixtime"`
+	Timeout    bool                         `json:"timeout,omitempty"`
 }
 
 func (s *Topom) newRedisStats(addr string, timeout time.Duration, do func(addr string) (*RedisStats, error)) *RedisStats {
