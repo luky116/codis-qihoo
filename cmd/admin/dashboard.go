@@ -81,9 +81,9 @@ func (t *cmdDashboard) Main(d map[string]interface{}) {
 		fallthrough
 	case d["--remove-table"].(bool):
 		fallthrough
-	case d["--remove-table-from-meta"].(bool):
+	case d["--remove-table-for-meta"].(bool):
 		fallthrough
-	case d["--remove-table-from-pika"].(bool):
+	case d["--remove-table-for-pika"].(bool):
 		fallthrough
 	case d["--rename-table"].(bool):
 		fallthrough
@@ -817,20 +817,20 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 
 		tid := utils.ArgumentIntegerMust(d, "--tid")
 
-		log.Debugf("call rpc remove-table-from-meta to dashboard %s", t.addr)
+		log.Debugf("call rpc remove-table-for-meta to dashboard %s", t.addr)
 		if err := c.RemoveTableFromMeta(tid); err != nil {
-			log.PanicErrorf(err, "call rpc remove-table-from-meta to dashboard %s failed", t.addr)
+			log.PanicErrorf(err, "call rpc remove-table-for-meta to dashboard %s failed", t.addr)
 		}
-		log.Debugf("call rpc remove-table-from-meta OK")
+		log.Debugf("call rpc remove-table-for-meta OK")
 	case d["--remove-table-from-pika"].(bool):
 
 		tid := utils.ArgumentIntegerMust(d, "--tid")
 
-		log.Debugf("call rpc remove-table-from-pika to dashboard %s", t.addr)
+		log.Debugf("call rpc remove-table-for-pika to dashboard %s", t.addr)
 		if err := c.RemoveTableFromPika(tid); err != nil {
-			log.PanicErrorf(err, "call rpc remove-table-from-pika to dashboard %s failed", t.addr)
+			log.PanicErrorf(err, "call rpc remove-table-for-pika to dashboard %s failed", t.addr)
 		}
-		log.Debugf("call rpc remove-table-from-pika OK")
+		log.Debugf("call rpc remove-table-for-pika OK")
 	case d["--rename-table"].(bool):
 
 		tid := utils.ArgumentIntegerMust(d, "--tid")
@@ -891,14 +891,14 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 
 		tid := utils.ArgumentIntegerMust(d, "--tid")
 		log.Debugf("call rpc get distribution to dashboard %s", t.addr)
-		distribution, err := c.GetDistribution(tid)
+		distribution, err := c.GetDistributionFromPika(tid)
 		if err != nil {
 			log.PanicErrorf(err, "call rpc get distribution to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc get distribution OK")
 
-		for _, dis := range distribution {
-			fmt.Printf("group ID: %d, Begin slot: %d, end slot: %d\n", dis.GroupId, dis.Begin, dis.End)
+		for a, dis := range distribution {
+			fmt.Printf("addr-[%s] slots: %s\n", a, dis)
 		}
 	}
 }

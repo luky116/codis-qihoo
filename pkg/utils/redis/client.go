@@ -461,10 +461,18 @@ func (c *Client) AddSlots(addr string, tid, beg, end int) error {
 	return nil
 }
 
-func (c *Client) DelSlots(addr string, tid, beg, end int) error {
+func (c *Client) DelSlotsRange(addr string, tid, beg, end int) error {
 	log.Warnf("addr-[%s]  table-[%d] delete slots begin-[%d], end-[%d]", addr, tid, beg, end)
 	buf := fmt.Sprintf("%d-%d", beg, end)
 	if _, err := c.Do("pkcluster", "delslots", buf, tid); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
+func (c *Client) DelSlots(addr string, tid int, slots string) error {
+	log.Warnf("addr-[%s]  table-[%d] delete slots: %s", addr, tid, slots)
+	if _, err := c.Do("pkcluster", "delslots", slots, tid); err != nil {
 		return errors.Trace(err)
 	}
 	return nil
@@ -807,14 +815,25 @@ func (p *Pool) AddSlots(tid, beg, end int) func(string) error {
 	}
 }
 
-func (p *Pool) DelSlots(tid, beg, end int) func(string) error {
+func (p *Pool) DelSlotsRange(tid, beg, end int) func(string) error {
 	return func(addr string) error {
 		c, err := p.GetClient(addr)
 		if err != nil {
 			return err
 		}
 		defer p.PutClient(c)
-		return c.DelSlots(addr, tid, beg, end)
+		return c.DelSlotsRange(addr, tid, beg, end)
+	}
+}
+
+func (p *Pool) DelSlots(tid int, slots map[string]string) func(string) error {
+	return func(addr string) error {
+		c, err := p.GetClient(addr)
+		if err != nil {
+			return err
+		}
+		defer p.PutClient(c)
+		return c.DelSlots(addr, tid, slots[addr])
 	}
 }
 

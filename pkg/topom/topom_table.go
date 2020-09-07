@@ -8,6 +8,7 @@ import (
 	"github.com/CodisLabs/codis/pkg/utils/rpc"
 	"github.com/CodisLabs/codis/pkg/utils/sync2"
 	"math/rand"
+	"strconv"
 	"time"
 )
 
@@ -85,7 +86,7 @@ func (s *Topom) pikaInGroupExist() error {
 }
 
 func (s *Topom) CreateSlotForMeta(tid int) error {
-	distribution, err := s.GetDistribution(tid)
+	distribution, err := s.CaculateDistribution(tid)
 	if err != nil {
 		return err
 	}
@@ -261,6 +262,7 @@ func (s *Topom) allocateSlot(slotNum int) ([]*SlotDistribution, error) {
 
 	distribution := make([]*SlotDistribution, math2.MinInt(groupSize, slotNum))
 	distance := slotNum / groupSize
+	remainder := slotNum % groupSize
 	if distance == 0 {
 		for i := 0; i < slotNum; i++ {
 			distribution[i] = &SlotDistribution{
@@ -270,28 +272,70 @@ func (s *Topom) allocateSlot(slotNum int) ([]*SlotDistribution, error) {
 				Done:    false}
 		}
 	} else {
-		for i := 0; i < groupSize; i++ {
+		for i := 0; i < remainder; i++ {
 			distribution[i] = &SlotDistribution{
 				GroupId: group[i].Id,
-				Begin:   distance * i,
-				End:     distance*(i+1) - 1,
+				Begin:   (distance + 1) * i,
+				End:     (distance+1)*(i+1) - 1,
 				Done:    false}
 		}
-		distribution[groupSize-1].End = slotNum - 1
+		for i := remainder; i < groupSize; i++ {
+			distribution[i] = &SlotDistribution{
+				GroupId: group[i].Id,
+				Begin:   distance*i + remainder,
+				End:     distance*(i+1) - 1 + remainder,
+				Done:    false}
+		}
 	}
 	return distribution, nil
 }
 
-func (s *Topom) GetDistribution(tid int) ([]*SlotDistribution, error) {
+func (s *Topom) CaculateDistribution(tid int) ([]*SlotDistribution, error) {
 	num, err := s.getSlotNum(tid)
 	if err != nil {
 		return nil, err
 	}
-	distribution, err := s.allocateSlot(num)
-	if err != nil {
+	if distribution, err := s.allocateSlot(num); err != nil {
+		return nil, err
+	} else {
+		return distribution, nil
+	}
+}
+
+func (s *Topom) GetDistributionFromPika(tid int) (map[string]string, error) {
+	if err := s.checkClusterStatus(); err != nil {
 		return nil, err
 	}
-	return distribution, nil
+
+	w, err := s.RefreshPikaInfo(time.Second)
+	if err != nil {
+		log.Warnf("check pika info slot error: %s", err)
+	}
+	if w != nil {
+		w.Wait()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for addr, p := range s.manager.servers {
+		if p.Timeout == true {
+			return nil, errors.Errorf("pika-[addr] get cluster info slot timeout", addr)
+		} else if p.Error != nil {
+			return nil, p.Error
+		}
+	}
+	slotSet := make(map[string]string)
+	for addr, p := range s.manager.servers {
+		if p.Table[tid] == nil {
+			continue
+		}
+		var slot string
+		for id := range p.Table[tid].Slot {
+			slot += strconv.Itoa(id) + ","
+		}
+		slotSet[addr] = slot
+		log.Infof("pika-[%s] table-[%d] slot: %s", addr, tid, slot)
+	}
+	return slotSet, nil
 }
 
 func (s *Topom) createTableForPika(tid, slotNum int) (map[string]*PikaResult, error) {
@@ -306,7 +350,7 @@ func (s *Topom) createTableForPika(tid, slotNum int) (map[string]*PikaResult, er
 }
 
 func (s *Topom) PikaAddSlot(tid int) (map[string]*PikaResult, error) {
-	distribution, err := s.GetDistribution(tid)
+	distribution, err := s.CaculateDistribution(tid)
 	if err != nil {
 		return nil, err
 	}
@@ -326,19 +370,15 @@ func (s *Topom) PikaAddSlot(tid int) (map[string]*PikaResult, error) {
 }
 
 func (s *Topom) PikaDelSlot(tid int) (map[string]*PikaResult, error) {
-	distribution, err := s.GetDistribution(tid)
+	d, err := s.GetDistributionFromPika(tid)
 	if err != nil {
 		return nil, err
 	}
-
-	for _, d := range distribution {
-		log.Warnf("table-[%d] del slot beg-[%d] end[%d]for group-[%d]", tid, d.Begin, d.End, d.GroupId)
-		command := s.stats.redisp.DelSlots(tid, d.Begin, d.End)
-		if results, err := s.pikaExecuteForGroup(time.Second*60, command, d.GroupId); err != nil {
-			return nil, err
-		} else if err = checkPikaResult(results); err != nil {
-			return results, err
-		}
+	command := s.stats.redisp.DelSlots(tid, d)
+	if results, err := s.pikaExecuteForeach(time.Second*60, command); err != nil {
+		return nil, err
+	} else if err = checkPikaResult(results); err != nil {
+		return results, err
 	}
 	return nil, nil
 }

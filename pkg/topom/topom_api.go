@@ -116,7 +116,7 @@ func newApiServer(t *Topom) http.Handler {
 			r.Get("/list/:xauth/:tid", api.ListTable)
 			r.Get("/get/:xauth/:tid", api.GetTable)
 			r.Get("/meta/:xauth", api.GetTableMeta)
-			r.Get("/distribution/:xauth/:tid", api.GetDistribution)
+			r.Get("/distribution/:xauth/:tid", api.GetDistributionFromPika)
 
 		})
 		r.Group("/pika", func(r martini.Router) {
@@ -712,7 +712,7 @@ func (s *apiServer) SetTableBlock(params martini.Params) (int, string) {
 	}
 }
 
-func (s *apiServer) GetDistribution(params martini.Params) (int, string) {
+func (s *apiServer) GetDistributionFromPika(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}
@@ -720,7 +720,7 @@ func (s *apiServer) GetDistribution(params martini.Params) (int, string) {
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
-	if distribution, err := s.topom.GetDistribution(tid); err != nil {
+	if distribution, err := s.topom.GetDistributionFromPika(tid); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {
 		return rpc.ApiResponseJson(distribution)
@@ -1366,9 +1366,9 @@ func (c *ApiClient) SetTableMeta(tid int) error {
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
-func (c *ApiClient) GetDistribution(tid int) ([]*SlotDistribution, error) {
+func (c *ApiClient) GetDistributionFromPika(tid int) (map[string]string, error) {
 	url := c.encodeURL("/api/topom/table/distribution/%s/%d", c.xauth, tid)
-	d := []*SlotDistribution{}
+	d := make(map[string]string)
 	if err := rpc.ApiGetJson(url, &d); err != nil {
 		return nil, err
 	}
