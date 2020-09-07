@@ -47,6 +47,9 @@ func checkPikaResult(results map[string]*PikaResult) error {
 }
 
 func (s *Topom) CreateTable(name string, num, id int) error {
+	if err := s.pikaInGroupExist(); err != nil {
+		return err
+	}
 	if err := s.checkClusterStatus(); err != nil {
 		return err
 	}
@@ -66,9 +69,67 @@ func (s *Topom) CreateTable(name string, num, id int) error {
 	return nil
 }
 
-func (s *Topom) CreateTableForMeta(name string, num, id int) error {
-	_, err := s.createMeta(name, num, id)
+func (s *Topom) pikaInGroupExist() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ctx, err := s.newContext()
 	if err != nil {
+		return err
+	}
+	for _, g := range ctx.group {
+		if len(g.Servers) == 0 {
+			return errors.Errorf("group-[%d] has no pika", g.Id)
+		}
+	}
+	return nil
+}
+
+func (s *Topom) CreateSlotForMeta(tid int) error {
+	distribution, err := s.GetDistribution(tid)
+	if err != nil {
+		return err
+	}
+	slots := []*models.SlotMapping{}
+	for _, d := range distribution {
+		for i := d.Begin; i <= d.End; i++ {
+			slots = append(slots, &models.SlotMapping{
+				Id:      i,
+				GroupId: d.GroupId,
+				TableId: tid,
+			})
+		}
+	}
+	if err := s.SlotsAssignGroup(tid, slots); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Topom) DeleteSlotForMeta(tid int) error {
+	num, err := s.getSlotNum(tid)
+	if err != nil {
+		return err
+	}
+	slots := make([]*models.SlotMapping, num)
+	for i := range slots {
+		slots[i] = &models.SlotMapping{
+			Id:      i,
+			GroupId: 0,
+			TableId: tid,
+		}
+	}
+	if err := s.SlotsAssignOffline(tid, slots); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Topom) CreateTableForMeta(name string, num, id int) error {
+	tid, err := s.createMeta(name, num, id)
+	if err != nil {
+		return err
+	}
+	if err := s.CreateSlotForMeta(tid); err != nil {
 		return err
 	}
 	return nil
@@ -245,12 +306,7 @@ func (s *Topom) createTableForPika(tid, slotNum int) (map[string]*PikaResult, er
 }
 
 func (s *Topom) PikaAddSlot(tid int) (map[string]*PikaResult, error) {
-	num, err := s.getSlotNum(tid)
-	if err != nil {
-		return nil, err
-	}
-
-	distribution, err := s.allocateSlot(num)
+	distribution, err := s.GetDistribution(tid)
 	if err != nil {
 		return nil, err
 	}
@@ -263,19 +319,18 @@ func (s *Topom) PikaAddSlot(tid int) (map[string]*PikaResult, error) {
 			return results, err
 		}
 	}
+	if err := s.CreateSlotForMeta(tid); err != nil {
+		return nil, err
+	}
 	return nil, nil
 }
 
 func (s *Topom) PikaDelSlot(tid int) (map[string]*PikaResult, error) {
-	num, err := s.getSlotNum(tid)
+	distribution, err := s.GetDistribution(tid)
 	if err != nil {
 		return nil, err
 	}
 
-	distribution, err := s.allocateSlot(num)
-	if err != nil {
-		return nil, err
-	}
 	for _, d := range distribution {
 		log.Warnf("table-[%d] del slot beg-[%d] end[%d]for group-[%d]", tid, d.Begin, d.End, d.GroupId)
 		command := s.stats.redisp.DelSlots(tid, d.Begin, d.End)
@@ -509,22 +564,34 @@ func (s *Topom) RemoveTable(tid int) error {
 	if err := s.checkClusterStatus(); err != nil {
 		return err
 	}
-	if err := s.RemoveTableFromMeta(tid); err != nil {
-		return err
-	}
 	if _, err := s.PikaSlotsSlaveofNoOne(tid); err != nil {
 		return err
 	}
+	time.Sleep(time.Second * 3)
 	if _, err := s.PikaDelSlot(tid); err != nil {
 		return err
 	}
-	if _, err := s.deleteTableFromPika(tid); err != nil {
+	if _, err := s.deleteTableForPika(tid); err != nil {
+		return err
+	}
+	if err := s.RemoveTableFromMeta(tid); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (s *Topom) RemoveTableFromMeta(tid int) error {
+	if err := s.DeleteSlotForMeta(tid); err != nil {
+		return err
+	}
+
+	if err := s.removeTableFromMeta(tid); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Topom) removeTableFromMeta(tid int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ctx, err := s.newContext()
@@ -557,7 +624,7 @@ func (s *Topom) RemoveTableFromPika(tid int) (map[string]*PikaResult, error) {
 	if err := s.checkClusterStatus(); err != nil {
 		return nil, err
 	}
-	if results, err := s.deleteTableFromPika(tid); err != nil {
+	if results, err := s.deleteTableForPika(tid); err != nil {
 		return nil, err
 	} else {
 		if err = checkPikaResult(results); err != nil {
@@ -567,7 +634,7 @@ func (s *Topom) RemoveTableFromPika(tid int) (map[string]*PikaResult, error) {
 	return nil, nil
 }
 
-func (s *Topom) deleteTableFromPika(tid int) (map[string]*PikaResult, error) {
+func (s *Topom) deleteTableForPika(tid int) (map[string]*PikaResult, error) {
 	log.Warnf("Delete table-[%d] foreach pika", tid)
 	command := s.stats.redisp.DeleteTable(tid)
 	if results, err := s.pikaExecuteForeach(time.Second, command); err != nil {

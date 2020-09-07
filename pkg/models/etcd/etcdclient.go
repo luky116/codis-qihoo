@@ -167,7 +167,7 @@ func (c *Client) Delete(path string) error {
 	cntx, cancel := c.newContext()
 	defer cancel()
 	log.Debugf("etcd delete node %s", path)
-	_, err := c.kapi.Delete(cntx, path, nil)
+	_, err := c.kapi.Delete(cntx, path, &client.DeleteOptions{Recursive: true})
 	if err != nil && !isErrNoNode(err) {
 		log.Debugf("etcd delete node %s failed: %s", path, err)
 		return errors.Trace(err)
