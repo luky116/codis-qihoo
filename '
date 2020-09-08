@@ -40,16 +40,16 @@ type Topom struct {
 		table map[int]*models.Table
 
 		tableMeta *models.TableMeta
-		sentinel  *models.Sentinel
+		sentinel *models.Sentinel
 	}
 
 	exit struct {
 		C chan struct{}
 	}
 
-	config    *Config
-	online    bool
-	closed    bool
+	config *Config
+	online bool
+	closed bool
 	managerOn bool `json:"manager_on"`
 
 	ladmin net.Listener
@@ -82,13 +82,13 @@ type Topom struct {
 	}
 
 	manager struct {
-		redisp          *redis.Pool
-		servers         map[string]*PikaInfo
-		status          map[string]*PikaPing
-		offLine         map[int]*Offline
+		redisp *redis.Pool
+		servers map[string]*PikaInfo
+		status map[string]*PikaPing
+		offLine map[int]*Offline
 		downAfterPeriod int64
-		infoPeriod      time.Duration
-		pingPeriod      time.Duration
+		infoPeriod time.Duration
+		pingPeriod time.Duration
 	}
 }
 
@@ -377,7 +377,7 @@ func (s *Topom) Stats() (*Stats, error) {
 type Stats struct {
 	Closed bool `json:"closed"`
 
-	Table map[int]*models.Table         `json:"table"`
+	Table map[int]*models.Table `json:"table"`
 	Slots map[int][]*models.SlotMapping `json:"slots"`
 
 	Group struct {
@@ -390,7 +390,7 @@ type Stats struct {
 		Stats  map[string]*ProxyStats `json:"stats"`
 	} `json:"proxy"`
 
-	QPS struct {
+	QPS struct{
 		TableStats map[int]*redis.PiakInfoTable `json:"table_stats"`
 	} `json:"qps"`
 
@@ -464,7 +464,7 @@ func (s *Topom) TableSlots(tid int) ([]*models.Slot, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := ctx.slots[tid]; ok {
+	if _ , ok := ctx.slots[tid]; ok {
 		return ctx.toSlotSlice(ctx.slots[tid], nil), nil
 	} else {
 		return nil, fmt.Errorf("table-[%s] not exist", tid)

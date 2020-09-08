@@ -33,10 +33,19 @@ Usage:
 	codis-admin [-v] --dashboard=ADDR            --remove-proxy  (--addr=ADDR|--token=TOKEN|--pid=ID)       [--force]
 	codis-admin [-v] --dashboard=ADDR            --reinit-proxy  (--addr=ADDR|--token=TOKEN|--pid=ID|--all) [--force]
 	codis-admin [-v] --dashboard=ADDR            --proxy-status
-	codis-admin [-v] --dashboard=ADDR            --create-table   --name=table-name --num=slots-num --auth=table-auth [--tid=ID]
-	codis-admin [-v] --dashboard=ADDR            --list-table   
-	codis-admin [-v] --dashboard=ADDR            --rename-table  --name=new-name --tid=ID --auth=table-auth
+	codis-admin [-v] --dashboard=ADDR            --create-table   --name=table-name --num=slots-num [--tid=ID]
+	codis-admin [-v] --dashboard=ADDR            --create-table-for-meta   --name=table-name --num=slots-num [--tid=ID]
+	codis-admin [-v] --dashboard=ADDR            --create-table-for-pika   --tid=ID
 	codis-admin [-v] --dashboard=ADDR            --remove-table   --tid=ID   
+	codis-admin [-v] --dashboard=ADDR            --remove-table-for-meta   --tid=ID   
+	codis-admin [-v] --dashboard=ADDR            --remove-table-for-pika   --tid=ID   
+	codis-admin [-v] --dashboard=ADDR            --pika-slaveof   --tid=ID
+	codis-admin [-v] --dashboard=ADDR            --pika-slaveof-no-one   --tid=ID
+	codis-admin [-v] --dashboard=ADDR            --add-slot-for-pika   --tid=ID
+	codis-admin [-v] --dashboard=ADDR            --del-slot-for-pika   --tid=ID
+	codis-admin [-v] --dashboard=ADDR            --list-table   
+	codis-admin [-v] --dashboard=ADDR            --distribution   --tid=ID
+	codis-admin [-v] --dashboard=ADDR            --rename-table  --name=new-name --tid=ID --auth=table-auth
 	codis-admin [-v] --dashboard=ADDR            --get-table-meta
 	codis-admin [-v] --dashboard=ADDR            --set-table-meta   --tid=ID   
 	codis-admin [-v] --dashboard=ADDR            --set-table-block   --tid=ID  (--enable|--disable)  

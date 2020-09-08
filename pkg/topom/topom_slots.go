@@ -24,7 +24,7 @@ func (s *Topom) SlotCreateAction(tid int, sid int, gid int) error {
 		return err
 	}
 	if ctx.table[tid] == nil {
-		return  errors.Errorf("no table-[tid] could be found", tid)
+		return errors.Errorf("no table-[tid] could be found", tid)
 	}
 
 	g, err := ctx.getGroup(gid)
@@ -61,7 +61,7 @@ func (s *Topom) SlotCreateActionSome(tid, groupFrom, groupTo int, numSlots int) 
 		return err
 	}
 	if ctx.table[tid] == nil {
-		return  errors.Errorf("no table-[tid] could be found", tid)
+		return errors.Errorf("no table-[tid] could be found", tid)
 	}
 
 	g, err := ctx.getGroup(groupTo)
@@ -114,7 +114,7 @@ func (s *Topom) SlotCreateActionRange(tid, beg, end int, gid int, must bool) err
 		return err
 	}
 	if ctx.table[tid] == nil {
-		return  errors.Errorf("no table-[tid] could be found", tid)
+		return errors.Errorf("no table-[tid] could be found", tid)
 	}
 	if !(beg >= 0 && beg <= end && end < ctx.table[tid].MaxSlotMum) {
 		return errors.Errorf("invalid slot range [%d,%d] in table-[%d]", beg, end, tid)
@@ -150,7 +150,7 @@ func (s *Topom) SlotCreateActionRange(tid, beg, end int, gid int, must bool) err
 	}
 
 	for _, sid := range pending {
-		m, err := ctx.getSlotMapping(tid,sid)
+		m, err := ctx.getSlotMapping(tid, sid)
 		if err != nil {
 			return err
 		}
@@ -174,7 +174,7 @@ func (s *Topom) SlotRemoveAction(tid, sid int) error {
 		return err
 	}
 	if ctx.table[tid] == nil {
-		return  errors.Errorf("no table-[tid] could be found", tid)
+		return errors.Errorf("no table-[tid] could be found", tid)
 	}
 
 	m, err := ctx.getSlotMapping(tid, sid)
@@ -197,7 +197,7 @@ func (s *Topom) SlotRemoveAction(tid, sid int) error {
 }
 
 func (s *Topom) SlotActionPrepare(tid int) (int, bool, error) {
-	return s.SlotActionPrepareFilter(nil, nil,tid)
+	return s.SlotActionPrepareFilter(nil, nil, tid)
 }
 
 func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMapping) bool, tid int) (int, bool, error) {
@@ -208,9 +208,8 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 		return 0, false, err
 	}
 	if ctx.table[tid] == nil {
-		return  0, false, errors.Errorf("no table-[tid] could be found", tid)
+		return 0, false, errors.Errorf("no table-[tid] could be found", tid)
 	}
-
 
 	var minActionIndex = func(filter func(m *models.SlotMapping) bool) (picked *models.SlotMapping) {
 		for _, m := range ctx.slots[tid] {
@@ -327,7 +326,7 @@ func (s *Topom) SlotActionComplete(tid int, sid int) error {
 		return err
 	}
 	if ctx.table[tid] == nil {
-		return  errors.Errorf("no table-[tid] could be found", tid)
+		return errors.Errorf("no table-[tid] could be found", tid)
 	}
 
 	m, err := ctx.getSlotMapping(tid, sid)
@@ -382,7 +381,7 @@ func (s *Topom) newSlotActionExecutor(tid int, sid int) (func(db int) (remains i
 		return nil, err
 	}
 	if ctx.table[tid] == nil {
-		return  nil, errors.Errorf("no table-[tid] could be found", tid)
+		return nil, errors.Errorf("no table-[tid] could be found", tid)
 	}
 
 	m, err := ctx.getSlotMapping(tid, sid)
@@ -454,15 +453,15 @@ func (s *Topom) newSlotActionExecutor(tid int, sid int) (func(db int) (remains i
 			}
 
 			nextdb := -1
-//			m, err := c.InfoKeySpace()
-//			if err != nil {
-//				return 0, -1, err
-//			}
-//			for i := range m {
-//				if (nextdb == -1 || i < nextdb) && db < i {
-//					nextdb = i
-//				}
-//			}
+			//			m, err := c.InfoKeySpace()
+			//			if err != nil {
+			//				return 0, -1, err
+			//			}
+			//			for i := range m {
+			//				if (nextdb == -1 || i < nextdb) && db < i {
+			//					nextdb = i
+			//				}
+			//			}
 			return 0, nextdb, nil
 
 		}, nil
@@ -488,7 +487,7 @@ func (s *Topom) SlotsAssignGroup(tid int, slots []*models.SlotMapping) error {
 		return err
 	}
 	if ctx.table[tid] == nil {
-		return  errors.Errorf("no table-[tid] could be found", tid)
+		return errors.Errorf("no table-[tid] could be found", tid)
 	}
 
 	for _, m := range slots {
@@ -511,13 +510,13 @@ func (s *Topom) SlotsAssignGroup(tid int, slots []*models.SlotMapping) error {
 	for i, m := range slots {
 		if g := ctx.group[m.GroupId]; !g.OutOfSync {
 			defer s.dirtyGroupCache(g.Id)
-			g.OutOfSync = true
+			//	g.OutOfSync = true
 			if err := s.storeUpdateGroup(g); err != nil {
 				return err
 			}
 		}
 		slots[i] = &models.SlotMapping{
-			Id: m.Id, GroupId: m.GroupId,
+			Id: m.Id, GroupId: m.GroupId, TableId: m.TableId,
 		}
 	}
 
@@ -541,7 +540,7 @@ func (s *Topom) SlotsAssignOffline(tid int, slots []*models.SlotMapping) error {
 		return err
 	}
 	if ctx.table[tid] == nil {
-		return  errors.Errorf("no table-[tid] could be found", tid)
+		return errors.Errorf("no table-[tid] could be found", tid)
 	}
 
 	for _, m := range slots {
@@ -556,8 +555,9 @@ func (s *Topom) SlotsAssignOffline(tid int, slots []*models.SlotMapping) error {
 
 	for i, m := range slots {
 		slots[i] = &models.SlotMapping{
-			Id: m.Id,
-			TableId: tid,
+			Id:      m.Id,
+			GroupId: m.GroupId,
+			TableId: m.TableId,
 		}
 	}
 
