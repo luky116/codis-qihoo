@@ -152,12 +152,30 @@ func (s *Topom) setup(config *Config) error {
 		return errors.Trace(err)
 	} else {
 		s.ladmin = l
+		s.ladmin = l
 
-		x, err := utils.ReplaceUnspecifiedIP("tcp", l.Addr().String(), s.config.HostAdmin)
-		if err != nil {
-			return err
+		var localIp string
+		var er error
+		if s.config.CoordinatorName == "filesystem" {
+			localIp = utils.HostIPs[0]
+		} else {
+			if s.config.CoordinatorAddr == "" {
+				return errors.New("CoordinatorAddr must not empty")
+			}
+			dialAddr := strings.Split(s.config.CoordinatorAddr, ",")
+			if localIp, er = utils.GetOutboundIP(dialAddr[0]); er != nil {
+				return er
+			}
+			log.Infof("Dial CoordinatorAddr:%v,localIp:%v", dialAddr[0], localIp)
 		}
-		s.model.AdminAddr = x
+
+		localAddr := strings.Split(s.config.AdminAddr, ":")
+		if len(localAddr) != 2 {
+			return errors.New("AdminAddr not correct")
+		}
+
+		s.model.AdminAddr = fmt.Sprintf("%s:%s", localIp, localAddr[1])
+
 	}
 
 	s.model.Token = rpc.NewToken(

@@ -508,8 +508,8 @@ function processGroupStats(codis_stats) {
                     }
                     x.memory = humanSize(v);
                 }
-                if (s.stats["maxmemory"]) {
-                    var v = parseInt(s.stats["maxmemory"], 10);
+                if (s.stats["db_size"]) {
+                    var v = parseInt(s.stats["db_size"], 10);
                     if (v == 0) {
                         x.maxmem = "INF."
                     } else {

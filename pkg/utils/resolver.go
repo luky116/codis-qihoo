@@ -84,6 +84,16 @@ func init() {
 	}
 }
 
+func GetOutboundIP(addr string) (string, error) {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+	localAddr := conn.LocalAddr().(*net.TCPAddr)
+	return localAddr.IP.String(), nil
+}
+
 func ReplaceUnspecifiedIP(network string, listenAddr, globalAddr string) (string, error) {
 	if globalAddr == "" {
 		return replaceUnspecifiedIP(network, listenAddr, true)
