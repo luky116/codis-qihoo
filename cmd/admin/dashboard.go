@@ -813,7 +813,7 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 			log.PanicErrorf(err, "call rpc remove-table to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc remove-table OK")
-	case d["--remove-table-from-meta"].(bool):
+	case d["--remove-table-for-meta"].(bool):
 
 		tid := utils.ArgumentIntegerMust(d, "--tid")
 
@@ -822,7 +822,7 @@ func (t *cmdDashboard) handleTableCommand(d map[string]interface{}) {
 			log.PanicErrorf(err, "call rpc remove-table-for-meta to dashboard %s failed", t.addr)
 		}
 		log.Debugf("call rpc remove-table-for-meta OK")
-	case d["--remove-table-from-pika"].(bool):
+	case d["--remove-table-for-pika"].(bool):
 
 		tid := utils.ArgumentIntegerMust(d, "--tid")
 
