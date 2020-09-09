@@ -8,6 +8,7 @@ import (
 	"github.com/CodisLabs/codis/pkg/utils/rpc"
 	"github.com/CodisLabs/codis/pkg/utils/sync2"
 	"math/rand"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -325,12 +326,17 @@ func (s *Topom) GetDistributionFromPika(tid int) (map[string]string, error) {
 	}
 	slotSet := make(map[string]string)
 	for addr, p := range s.manager.servers {
+		var slice []int
 		if p.Table[tid] == nil {
 			continue
 		}
-		var slot string
 		for id := range p.Table[tid].Slot {
-			slot += strconv.Itoa(id) + ","
+			slice = append(slice, id)
+		}
+		sort.Ints(slice)
+		var slot string
+		for _, e := range slice {
+			slot += strconv.Itoa(e) + ","
 		}
 		slotSet[addr] = slot
 		log.Infof("pika-[%s] table-[%d] slot: %s", addr, tid, slot)
