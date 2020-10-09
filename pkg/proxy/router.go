@@ -16,7 +16,7 @@ import (
 //const MaxSlotNum = models.MaxSlotNum
 
 type Router struct {
-	mu sync.RWMutex
+	mu      sync.RWMutex
 	tableMu sync.RWMutex
 
 	pool struct {
@@ -37,10 +37,10 @@ func NewRouter(config *Config) *Router {
 	s.pool.replica = newSharedBackendConnPool(config, config.BackendReplicaParallel)
 	s.table = make(map[int]*models.Table)
 	s.slots = make(map[int][]Slot)
-//	for i := range s.slots {
-//		s.slots[i].id = i
-//		s.slots[i].method = &forwardSync{}
-//	}
+	//	for i := range s.slots {
+	//		s.slots[i].id = i
+	//		s.slots[i].method = &forwardSync{}
+	//	}
 	return s
 }
 
@@ -72,8 +72,8 @@ func (s *Router) GetSlots() []*models.Slot {
 	var slots []*models.Slot
 	for i := range s.slots {
 		for j := range s.slots[i] {
-			m  := s.slots[i][j].snapshot()
-			m.TableId  = i
+			m := s.slots[i][j].snapshot()
+			m.TableId = i
 			slots = append(slots, m)
 		}
 	}
@@ -106,13 +106,12 @@ func (s *Router) HasSwitched() bool {
 }
 
 var (
-	ErrClosedRouter  = errors.New("use of closed router")
-	ErrInvalidSlotId = errors.New("use of invalid slot id")
+	ErrClosedRouter   = errors.New("use of closed router")
+	ErrInvalidSlotId  = errors.New("use of invalid slot id")
 	ErrInvalidTableId = errors.New("use of invalid table id")
-	ErrInvalidMethod = errors.New("use of invalid forwarder method")
-	ErrTableBlocked = errors.New("table is blocked")
+	ErrInvalidMethod  = errors.New("use of invalid forwarder method")
+	ErrTableBlocked   = errors.New("table is blocked")
 )
-
 
 func (s *Router) DelTable(t *models.Table) {
 	s.tableMu.Lock()
@@ -130,7 +129,7 @@ func (s *Router) FillTable(t *models.Table) {
 func (s *Router) GetTable(tid int) *models.Table {
 	s.tableMu.RLock()
 	defer s.tableMu.RUnlock()
-	if t , ok := s.table[tid]; ok == true {
+	if t, ok := s.table[tid]; ok == true {
 		return t
 	}
 	return nil
@@ -142,7 +141,7 @@ func (s *Router) isBlocked(tid int) (bool, error) {
 	if t, ok := s.table[tid]; ok == true {
 		return t.IsBlocked, nil
 	} else {
-		return false,  ErrInvalidTableId
+		return false, ErrInvalidTableId
 	}
 }
 
@@ -152,7 +151,7 @@ func (s *Router) getSlotNum(tid int) (int, error) {
 	if t, ok := s.table[tid]; ok == true {
 		return t.MaxSlotMum, nil
 	} else {
-		return 0,  ErrInvalidTableId
+		return 0, ErrInvalidTableId
 	}
 }
 func (s *Router) getAuth(tid int) (string, error) {
@@ -161,7 +160,7 @@ func (s *Router) getAuth(tid int) (string, error) {
 	if t, ok := s.table[tid]; ok == true {
 		return t.Auth, nil
 	} else {
-		return "",  ErrInvalidTableId
+		return "", ErrInvalidTableId
 	}
 }
 
@@ -185,7 +184,7 @@ func (s *Router) FillSlot(m *models.Slot) error {
 	//defer s.tableMutex.RUnlock()
 	if _, ok := s.table[m.TableId]; !ok {
 		log.Infof("slot table id: %d, slot id: %d ", m.TableId, m.Id)
-		return  ErrInvalidTableId
+		return ErrInvalidTableId
 	}
 	if m.Id < 0 || m.Id >= s.table[m.TableId].MaxSlotMum {
 		return ErrInvalidSlotId
@@ -210,7 +209,7 @@ func (s *Router) DelSlots(tid int) error {
 	}
 	s.slots[tid] = nil
 	delete(s.slots, tid)
-	return  nil
+	return nil
 }
 
 func (s *Router) KeepAlive() error {
@@ -236,7 +235,7 @@ func (s *Router) dispatch(r *Request) error {
 	}
 	var id = Hash(hkey) % uint32(slotNum)
 	slot := &s.slots[r.Database][id]
-//	log.Infof("key: %s dispatch slot id: %d, slot num: %d", hkey,slot.id, slotNum)
+	log.Infof("key: %s dispatch slot id: %d, slot num: %d", hkey, slot.id, slotNum)
 	return slot.forward(r, hkey)
 }
 
@@ -267,8 +266,8 @@ func (s *Router) dispatchAddr(r *Request, addr string) bool {
 }
 
 func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
-	if _ , ok := s.slots[m.TableId]; !ok {
-		slots := make ([]Slot, s.table[m.TableId].MaxSlotMum)
+	if _, ok := s.slots[m.TableId]; !ok {
+		slots := make([]Slot, s.table[m.TableId].MaxSlotMum)
 		s.slots[m.TableId] = slots
 		for i := range slots {
 			slots[i].id = i
@@ -294,7 +293,7 @@ func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 	slot.switched = switched
 
 	if addr := m.BackendAddr; len(addr) != 0 {
-		slot.backend.bc = s.pool.primary.Retain(s.table[m.TableId],  addr)
+		slot.backend.bc = s.pool.primary.Retain(s.table[m.TableId], addr)
 		slot.backend.id = m.BackendAddrGroupId
 	}
 	if from := m.MigrateFrom; len(from) != 0 {
@@ -351,7 +350,7 @@ func (s *Router) SwitchMasters(masters map[int]string) error {
 		Auth: s.config.ProductAuth, Timeout: time.Millisecond * 100,
 	}
 	for i := range s.slots {
-		for j := range(s.slots[i])  {
+		for j := range s.slots[i] {
 			s.trySwitchMaster(i, j, masters, cache)
 		}
 	}
