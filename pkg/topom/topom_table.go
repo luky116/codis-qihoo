@@ -308,7 +308,7 @@ func (s *Topom) GetDistributionFromPika(tid int) (map[string]string, error) {
 		return nil, err
 	}
 
-	w, err := s.RefreshPikaInfo(time.Second)
+	w, err := s.RefreshPikaInfo(time.Second * 30)
 	if err != nil {
 		log.Warnf("check pika info slot error: %s", err)
 	}
@@ -347,7 +347,7 @@ func (s *Topom) GetDistributionFromPika(tid int) (map[string]string, error) {
 func (s *Topom) createTableForPika(tid, slotNum int) (map[string]*PikaResult, error) {
 	log.Warnf("Create table-[%d] slot num-[%d] foreach pika", tid, slotNum)
 	command := s.stats.redisp.CreateTable(tid, slotNum)
-	if results, err := s.pikaExecuteForeach(time.Second, command); err != nil {
+	if results, err := s.pikaExecuteForeach(time.Second*30, command); err != nil {
 		return nil, err
 	} else if err = checkPikaResult(results); err != nil {
 		return results, err
@@ -363,7 +363,7 @@ func (s *Topom) PikaAddSlot(tid int) (map[string]*PikaResult, error) {
 	for _, d := range distribution {
 		log.Warnf("table-[%d] add slot beg-[%d] end[%d]for group-[%d]", tid, d.Begin, d.End, d.GroupId)
 		command := s.stats.redisp.AddSlots(tid, d.Begin, d.End)
-		if results, err := s.pikaExecuteForGroup(time.Second*60, command, d.GroupId); err != nil {
+		if results, err := s.pikaExecuteForGroup(time.Second*30, command, d.GroupId); err != nil {
 			return nil, err
 		} else if err = checkPikaResult(results); err != nil {
 			return results, err
@@ -381,7 +381,7 @@ func (s *Topom) PikaDelSlot(tid int) (map[string]*PikaResult, error) {
 		return nil, err
 	}
 	command := s.stats.redisp.DelSlots(tid, d)
-	if results, err := s.pikaExecuteForeach(time.Second*60, command); err != nil {
+	if results, err := s.pikaExecuteForeach(time.Second*30, command); err != nil {
 		return nil, err
 	} else if err = checkPikaResult(results); err != nil {
 		return results, err
@@ -404,7 +404,7 @@ func (s *Topom) PikaSlotsSlaveof(tid int) (map[string]*PikaResult, error) {
 		} else if master != "" {
 			log.Warnf("table-[%d] slots slaveof in group-[%d]", tid, g.Id)
 			command := s.stats.redisp.SlotSlaveofAll(master, tid)
-			if results, err := s.pikaExecuteForSlave(time.Second*60, command, g.Id); err != nil {
+			if results, err := s.pikaExecuteForSlave(time.Second*30, command, g.Id); err != nil {
 				return nil, err
 			} else if err = checkPikaResult(results); err != nil {
 				return results, err
@@ -419,7 +419,7 @@ func (s *Topom) PikaSlotsSlaveofNoOne(tid int) (map[string]*PikaResult, error) {
 		return nil, err
 	}
 	command := s.stats.redisp.SlotSlaveofAll("no:one", tid)
-	if results, err := s.pikaExecuteForSlave(time.Second*10, command, 0); err != nil {
+	if results, err := s.pikaExecuteForSlave(time.Second*30, command, 0); err != nil {
 		return nil, err
 	} else if err = checkPikaResult(results); err != nil {
 		return results, err
@@ -613,7 +613,7 @@ func (s *Topom) RemoveTable(tid int) error {
 	if _, err := s.PikaSlotsSlaveofNoOne(tid); err != nil {
 		return err
 	}
-	time.Sleep(time.Second * 3)
+	time.Sleep(time.Second * 5)
 	if _, err := s.PikaDelSlot(tid); err != nil {
 		return err
 	}
@@ -683,7 +683,7 @@ func (s *Topom) RemoveTableFromPika(tid int) (map[string]*PikaResult, error) {
 func (s *Topom) deleteTableForPika(tid int) (map[string]*PikaResult, error) {
 	log.Warnf("Delete table-[%d] foreach pika", tid)
 	command := s.stats.redisp.DeleteTable(tid)
-	if results, err := s.pikaExecuteForeach(time.Second, command); err != nil {
+	if results, err := s.pikaExecuteForeach(time.Second*30, command); err != nil {
 		return nil, err
 	} else {
 		return results, nil
