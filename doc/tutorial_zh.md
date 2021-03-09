@@ -577,6 +577,7 @@ Usage:
 -v表示设置命令行工具的log级别为debug级别，不使用时表示log级别为info。
 
 #### 创建table
+d创建table的id是从1开始的。这是因为redis 中默认使用table 0，即不进行select 直接发送命令。在集群的情况下，为了防止业务没有进行select 直接进行数据读写，把数据写入到错误的table中。我们弃用了table 0. 这样业务只要创建连接的时候，进行auth 和select就可以了。
 ```
 ./bin/codis-admin   --dashboard=127.0.0.1:18080  --create-table --name=table2 --num=16
 ```
