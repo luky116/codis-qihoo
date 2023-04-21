@@ -104,6 +104,7 @@ func (b *Reader) PeekByte() (byte, error) {
 		return 0, b.err
 	}
 	if b.buffered() == 0 {
+		// 这里会被阻塞，直到有client端的请求发过来
 		if b.fill() != nil {
 			return 0, b.err
 		}

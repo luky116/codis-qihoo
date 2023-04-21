@@ -35,7 +35,7 @@ func (t RespType) String() string {
 type Resp struct {
 	Type RespType
 
-	Value []byte
+	Value []byte // 存放实际的返回值
 	Array []*Resp
 }
 

@@ -108,6 +108,8 @@ Options:
 	}
 
 	config := proxy.NewDefaultConfig()
+	// 先读取配置文件，然后读取传参
+	// 确保传参的优先级大于配置文件
 	if s, ok := utils.Argument(d, "--config"); ok {
 		if err := config.LoadFromFile(s); err != nil {
 			log.PanicErrorf(err, "load config %s failed", s)
@@ -153,11 +155,12 @@ Options:
 	case d["--filesystem"] != nil:
 		coordinator.name = "filesystem"
 		coordinator.addr = utils.ArgumentMust(d, "--filesystem")
-
 	}
 
 	if coordinator.name != "" {
 		log.Warnf("option --%s = %s", coordinator.name, coordinator.addr)
+	} else {
+		log.Warnf("coordinator.name is nill")
 	}
 
 	var slots []*models.Slot
@@ -184,6 +187,10 @@ Options:
 		log.Warnf("option --session_auth = %s", s)
 	}
 
+	// 检查 config 参数是否合法
+	// 开启 admin api 服务，给 dashboard 提供rest接口，监听端口 11080
+	// 创建 proxy 服务，监听端口 19000
+	// 开启 metrics 监控服务
 	s, err := proxy.New(config)
 	if err != nil {
 		log.PanicErrorf(err, "create proxy with config file failed\n%s", config)
@@ -217,6 +224,7 @@ Options:
 	}()
 
 	switch {
+	// dashboard 的地址，一般传参为： --dashboard=127.0.0.1:18080
 	case dashboard != "":
 		go AutoOnlineWithDashboard(s, dashboard)
 	case coordinator.name != "":

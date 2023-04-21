@@ -26,7 +26,7 @@ type Session struct {
 	CreateUnix int64
 	LastOpUnix int64
 
-	database int32
+	database int32 // 使用的数据库。比如执行 SELECT db 语句，会直接把选中的db给赋值
 
 	quit bool
 	exit sync.Once
@@ -67,9 +67,9 @@ func NewSession(sock net.Conn, config *Config) *Session {
 		config.SessionRecvBufsize.AsInt(),
 		config.SessionSendBufsize.AsInt(),
 	)
-	c.ReaderTimeout = config.SessionRecvTimeout.Duration()
-	c.WriterTimeout = config.SessionSendTimeout.Duration()
-	c.SetKeepAlivePeriod(config.SessionKeepAlivePeriod.Duration())
+	c.ReaderTimeout = config.SessionRecvTimeout.Duration()         //回复缓冲区超时时间。默认30m
+	c.WriterTimeout = config.SessionSendTimeout.Duration()         //发送缓冲区超时时间，默认30s
+	c.SetKeepAlivePeriod(config.SessionKeepAlivePeriod.Duration()) //连接超时，默认75s
 
 	s := &Session{
 		Conn: c, config: config,
@@ -111,8 +111,12 @@ var (
 
 var RespOK = redis.NewString([]byte("OK"))
 
+// 备注 router 只包含了 config 的信息
 func (s *Session) Start(d *Router) {
+	// start 说明一个 session 只需要开启一个协程
 	s.start.Do(func() {
+		//默认最大session数1000
+		// todo 啥时候回出现过多的clients？？？？？
 		if int(incrSessions()) > s.config.ProxyMaxClients {
 			go func() {
 				s.Conn.Encode(redis.NewErrorf("ERR max number of clients reached"), true)
@@ -124,6 +128,7 @@ func (s *Session) Start(d *Router) {
 			return
 		}
 
+		// todo 不在线是什么意思？什么时候会出现这种情况？
 		if !d.isOnline() {
 			go func() {
 				s.Conn.Encode(redis.NewErrorf("ERR router is not online"), true)
@@ -135,20 +140,27 @@ func (s *Session) Start(d *Router) {
 			return
 		}
 
+		//tasks是一个指向RequestChan的指针,RequestChan结构体中有一个data字段,
+		//data字段是个数组，保存1024个指向Request的指针
 		tasks := NewRequestChanBuffer(1024)
 
 		go func() {
+			//s.loopWriter是合并请求结果，针对mset/mget参数会有合并请求操作
+			// 读取结果数据，并返回给用户
 			s.loopWriter(tasks)
 			decrSessions()
 		}()
 
 		go func() {
+			//s.loopReader读取分发请求，首先根据key计算该key分配到哪个slot.
+			//在此步骤中只会将slot对应的连接取出，然后将请求放到连接的input字段中。
 			s.loopReader(tasks, d)
 			tasks.Close()
 		}()
 	})
 }
 
+// 读取分发请求，首先根据key计算该key分配到哪个slot.在此步骤中只会将slot对应的连接取出，然后将请求放到连接的input字段中。
 func (s *Session) loopReader(tasks *RequestChan, d *Router) (err error) {
 	defer func() {
 		s.CloseReaderWithError(err)
@@ -160,6 +172,8 @@ func (s *Session) loopReader(tasks *RequestChan, d *Router) (err error) {
 	)
 
 	for !s.quit {
+		// decode 用户请求，得到明文。比如：["GET","name"]
+		// 这里面会阻塞，直到收到client发送的请求
 		multi, err := s.Conn.DecodeMultiBulk()
 		if err != nil {
 			return err
@@ -169,6 +183,7 @@ func (s *Session) loopReader(tasks *RequestChan, d *Router) (err error) {
 		}
 		s.incrOpTotal()
 
+		// 如果当前正在排队处理的请求数量大于10000，则拒绝请求
 		if tasks.Buffered() > maxPipelineLen {
 			return s.incrOpFails(nil, ErrTooManyPipelinedRequests)
 		}
@@ -177,14 +192,20 @@ func (s *Session) loopReader(tasks *RequestChan, d *Router) (err error) {
 		s.LastOpUnix = start.Unix()
 		s.Ops++
 
+		//创建一个Request结构体，该结构体会贯穿请求的始终，请求字段，响应字段都放在Request中
 		r := &Request{}
 		r.Multi = multi
 		r.Batch = &sync.WaitGroup{}
+		//选择数据库，选择范围0 ～ 15。
 		r.Database = s.database
 		r.UnixNano = start.UnixNano()
 
+		// 处理请求
 		if err := s.handleRequest(r, d); err != nil {
 			r.Resp = redis.NewErrorf("ERR handle request, %s", err)
+			//如果handleRequest执行成功，将请求r放入tasks
+			// handleRequest函数中的r放入tasks，即上文的RequestChan的data字段中。
+			// loopWriter会从该字段中获取请求并且返回给客户端。
 			tasks.PushBack(r)
 			if breakOnFailure {
 				return err
@@ -215,7 +236,7 @@ func (s *Session) loopWriter(tasks *RequestChan) (err error) {
 	p.MaxBuffered = maxPipelineLen / 2
 
 	return tasks.PopFrontAll(func(r *Request) error {
-		resp, err := s.handleResponse(r)
+		resp, err := s.handleResponse(r) // r.*redis.Resp 即是执行结果
 		if err != nil {
 			resp = redis.NewErrorf("ERR handle response, %s", err)
 			if breakOnFailure {
@@ -227,10 +248,10 @@ func (s *Session) loopWriter(tasks *RequestChan) (err error) {
 			return s.incrOpFails(r, err)
 		}
 		fflush := tasks.IsEmpty()
-		if err := p.Flush(fflush); err != nil {
+		if err := p.Flush(fflush); err != nil { // Flush 将执行结果推送给用户
 			return s.incrOpFails(r, err)
 		} else {
-			s.incrOpStats(r, resp.Type)
+			s.incrOpStats(r, resp.Type) // 统计调用次数
 		}
 		if fflush {
 			s.flushOpStats(false)
@@ -255,13 +276,13 @@ func (s *Session) handleResponse(r *Request) (*redis.Resp, error) {
 }
 
 func (s *Session) handleRequest(r *Request, d *Router) error {
-	opstr, flag, err := getOpInfo(r.Multi)
+	opstr, flag, err := getOpInfo(r.Multi) // opstr = GET, flag = 0
 	if err != nil {
 		return err
 	}
 	r.OpStr = opstr
 	r.OpFlag = flag
-	r.Broken = &s.broken
+	r.Broken = &s.broken // 0
 
 	if flag.IsNotAllowed() {
 		return fmt.Errorf("command '%s' is not allowed", opstr)
@@ -304,6 +325,7 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 	case "SLOTSMAPPING":
 		return s.handleRequestSlotsMapping(r, d)
 	default:
+		//分发slots函数
 		return d.dispatch(r)
 	}
 }
@@ -354,7 +376,7 @@ func (s *Session) handleRequestPing(r *Request, d *Router) error {
 	var nblks = len(r.Multi) - 1
 	switch {
 	case nblks == 0:
-		slot := uint32(time.Now().Nanosecond()) % MaxSlotNum
+		slot := uint32(time.Now().Nanosecond()) % MaxSlotNum // 随机挑选slots进行处理
 		return d.dispatchSlot(r, int(slot))
 	default:
 		addr = string(r.Multi[1].Value)

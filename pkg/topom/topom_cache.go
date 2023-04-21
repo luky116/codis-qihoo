@@ -81,6 +81,7 @@ func (s *Topom) refillCache() error {
 }
 
 func (s *Topom) refillCacheSlots(slots []*models.SlotMapping) ([]*models.SlotMapping, error) {
+	//如果cache中的slots为空，就直接返回 zk/本地文件 里面的slots
 	if slots == nil {
 		return s.store.SlotMappings()
 	}
@@ -220,6 +221,7 @@ func (s *Topom) storeRemoveProxy(p *models.Proxy) error {
 	return nil
 }
 
+// 更新本地文件/ZK的数据
 func (s *Topom) storeUpdateSentinel(p *models.Sentinel) error {
 	log.Warnf("update sentinel:\n%s", p.Encode())
 	if err := s.store.UpdateSentinel(p); err != nil {

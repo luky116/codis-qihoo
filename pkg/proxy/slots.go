@@ -19,11 +19,11 @@ type Slot struct {
 
 	switched bool
 
-	backend, migrate struct {
-		id int
+	backend, migrate struct { // backend主要是处理redis读写操作的后端连接，
+		id int // migrate是用来进行key迁移的连接。codis对redis进行了部分修改，支持了一些key迁移命令
 		bc *sharedBackendConn
 	}
-	replicaGroups [][]*sharedBackendConn
+	replicaGroups [][]*sharedBackendConn // 则是对应从节点的连接，如果设置允许读取从的话，读取命令会被发送的从节点。
 
 	method forwardMethod
 }

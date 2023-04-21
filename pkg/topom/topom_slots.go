@@ -100,6 +100,7 @@ func (s *Topom) SlotCreateActionSome(groupFrom, groupTo int, numSlots int) error
 	return nil
 }
 
+// slot 迁移逻辑
 func (s *Topom) SlotCreateActionRange(beg, end int, gid int, must bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -116,12 +117,13 @@ func (s *Topom) SlotCreateActionRange(beg, end int, gid int, must bool) error {
 	if err != nil {
 		return err
 	}
-	if len(g.Servers) == 0 {
+	if len(g.Servers) == 0 { // 如果组没有配置server id，说明这个group不生效，不能往非法的group迁移
 		return errors.Errorf("group-[%d] is empty", g.Id)
 	}
 
 	var pending []int
 	for sid := beg; sid <= end; sid++ {
+		// 获取slot
 		m, err := ctx.getSlotMapping(sid)
 		if err != nil {
 			return err
@@ -149,8 +151,10 @@ func (s *Topom) SlotCreateActionRange(beg, end int, gid int, must bool) error {
 		defer s.dirtySlotsCache(m.Id)
 
 		m.Action.State = models.ActionPending
+		// 当前正在操作的最大index
 		m.Action.Index = ctx.maxSlotActionIndex() + 1
 		m.Action.TargetId = g.Id
+		// 更新file或是ZK存储
 		if err := s.storeUpdateSlotMapping(m); err != nil {
 			return err
 		}
@@ -202,7 +206,9 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 			if m.Action.State == models.ActionNothing {
 				continue
 			}
-			if filter(m) {
+			if m.Action.State != models.ActionPending {
+				//if filter(m) {
+				//从最小的开始执行
 				if picked != nil && picked.Action.Index < m.Action.Index {
 					continue
 				}
@@ -215,6 +221,7 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 	}
 
 	var m = func() *models.SlotMapping {
+		// 优先执行非apending的数据
 		var picked = minActionIndex(func(m *models.SlotMapping) bool {
 			return m.Action.State != models.ActionPending
 		})
@@ -224,6 +231,7 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 		if s.action.disabled.IsTrue() {
 			return nil
 		}
+		// 再执行apending的数据的迁移
 		return minActionIndex(func(m *models.SlotMapping) bool {
 			return m.Action.State == models.ActionPending
 		})
@@ -245,6 +253,7 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 
 		defer s.dirtySlotsCache(m.Id)
 
+		// 改状态为准备中迁移
 		m.Action.State = models.ActionPreparing
 		if err := s.storeUpdateSlotMapping(m); err != nil {
 			return 0, false, err
@@ -257,8 +266,9 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 		defer s.dirtySlotsCache(m.Id)
 
 		log.Warnf("slot-[%d] resync to prepared", m.Id)
-
+		// 改状态为已准备迁移
 		m.Action.State = models.ActionPrepared
+		// 通过Proxy重连新的Redis Server并且设置slot从哪迁移等信息
 		if err := s.resyncSlotMappings(ctx, m); err != nil {
 			log.Warnf("slot-[%d] resync-rollback to preparing", m.Id)
 			m.Action.State = models.ActionPreparing
@@ -355,6 +365,7 @@ func (s *Topom) SlotActionComplete(sid int) error {
 	}
 }
 
+// 得到执行器
 func (s *Topom) newSlotActionExecutor(sid int) (func(db int) (remains int, nextdb int, err error), error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -407,6 +418,7 @@ func (s *Topom) newSlotActionExecutor(sid int) (func(db int) (remains int, nextd
 			switch method {
 			case models.ForwardSync:
 				do = func() (int, error) {
+					// 实际迁移的逻辑
 					return c.MigrateSlot(sid, dest)
 				}
 			case models.ForwardSemiAsync:

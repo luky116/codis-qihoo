@@ -12,22 +12,22 @@ import (
 )
 
 type Request struct {
-	Multi []*redis.Resp
-	Batch *sync.WaitGroup
+	Multi []*redis.Resp   //保存请求命令,按redis的resp协议类型将请求保存到Multi字段中。比如，["GET","name"]
+	Batch *sync.WaitGroup /*返回响应时,会在Batch处等待,r.Batch.Wait(), 所以可以做到当请求执行完成后才会执行返回函数*/
 	Group *sync.WaitGroup
 
 	Broken *atomic2.Bool
 
-	OpStr string
+	OpStr string //输入指令，比如 GET、SET
 	OpFlag
 
-	Database int32
-	UnixNano int64
+	Database int32 //数据库编号
+	UnixNano int64 //精确的unix时间
 
-	*redis.Resp
-	Err error
+	*redis.Resp //保存响应数据,也是redis的resp协议类型
+	Err         error
 
-	Coalesce func() error
+	Coalesce func() error //聚合函数,适用于mget/mset等需要聚合响应的操作命令
 }
 
 func (r *Request) IsBroken() bool {
@@ -121,22 +121,22 @@ func (c *RequestChan) lockedPushBack(r *Request) int {
 	if c.waits != 0 {
 		c.cond.Signal()
 	}
-	c.data = append(c.data, r)
+	c.data = append(c.data, r) // 这里会将用户请求的处理结果放在data队列中。在 loopWriter 中，会将结果取出来，给用户相应
 	return len(c.data)
 }
 
 func (c *RequestChan) lockedPopFront() (*Request, bool) {
-	for len(c.data) == 0 {
+	for len(c.data) == 0 { // data存放的是用户请求的处理结果，这里循环等待，直到有结果，再将结果返回给用户
 		if c.closed {
 			return nil, false
 		}
 		c.data = c.buff[:0]
 		c.waits++
-		c.cond.Wait()
+		c.cond.Wait() // 这里进入休眠，直到被 loopReader 唤醒
 		c.waits--
 	}
 	var r = c.data[0]
-	c.data, c.data[0] = c.data[1:], nil
+	c.data, c.data[0] = c.data[1:], nil // 这里将 data[0]元素删除，以便继续处理data[1:]之后的元素。此操作就是堆的POP操作
 	return r, true
 }
 
@@ -144,11 +144,11 @@ func (c *RequestChan) IsEmpty() bool {
 	return c.Buffered() == 0
 }
 
-func (c *RequestChan) PopFrontAll(onRequest func(r *Request) error) error {
+func (c *RequestChan) PopFrontAll(onRequest func(r *Request) error) error { // 如果有请求进来，这里是请求的入口
 	for {
-		r, ok := c.PopFront()
+		r, ok := c.PopFront() // 从 data 中读取执行结果
 		if ok {
-			if err := onRequest(r); err != nil {
+			if err := onRequest(r); err != nil { // onRequest 会将结果返回给用户
 				return err
 			}
 		} else {

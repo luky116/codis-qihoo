@@ -33,7 +33,7 @@ func NewRouter(config *Config) *Router {
 	s := &Router{config: config}
 	s.pool.primary = newSharedBackendConnPool(config, config.BackendPrimaryParallel)
 	s.pool.replica = newSharedBackendConnPool(config, config.BackendReplicaParallel)
-	for i := range s.slots {
+	for i := range s.slots { // 初始化 1024 个 slot 的基础信息
 		s.slots[i].id = i
 		s.slots[i].method = &forwardSync{}
 	}
@@ -137,8 +137,9 @@ func (s *Router) isOnline() bool {
 }
 
 func (s *Router) dispatch(r *Request) error {
-	hkey := getHashKey(r.Multi, r.OpStr)
-	var id = Hash(hkey) % MaxSlotNum
+	// 计算slot的hash值
+	hkey := getHashKey(r.Multi, r.OpStr) // 参数，比如 GET name 中的 name
+	var id = Hash(hkey) % MaxSlotNum     // 计算改命令要分配去执行的slot
 	slot := &s.slots[id]
 	return slot.forward(r, hkey)
 }
@@ -169,12 +170,15 @@ func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 	slot := &s.slots[m.Id]
 	slot.blockAndWait()
 
+	// 关闭客户端通信的链接
 	slot.backend.bc.Release()
 	slot.backend.bc = nil
 	slot.backend.id = 0
+	// 关闭客户端迁移的链接
 	slot.migrate.bc.Release()
 	slot.migrate.bc = nil
 	slot.migrate.id = 0
+	// 关闭从库的链接
 	for i := range slot.replicaGroups {
 		for _, bc := range slot.replicaGroups[i] {
 			bc.Release()

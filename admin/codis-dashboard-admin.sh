@@ -34,7 +34,7 @@ start)
       fi
     fi
     nohup "$CODIS_DASHBOARD_BIN" "--config=${CODIS_DASHBOARD_CONF_FILE}" \
-    "--log=$CODIS_DASHBOARD_LOG_FILE" "--log-level=INFO" "--pidfile=$CODIS_DASHBOARD_PID_FILE" > "$CODIS_DASHBOARD_DAEMON_FILE" 2>&1 < /dev/null &
+    "--log=$CODIS_DASHBOARD_LOG_FILE" "--log-level=DEBUG" "--pidfile=$CODIS_DASHBOARD_PID_FILE" > "$CODIS_DASHBOARD_DAEMON_FILE" 2>&1 < /dev/null &
     ;;
 start-foreground)
     $CODIS_DASHBOARD_BIN "--config=${CODIS_DASHBOARD_CONF_FILE}" \

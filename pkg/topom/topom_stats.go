@@ -46,6 +46,7 @@ func (s *Topom) newRedisStats(addr string, timeout time.Duration, do func(addr s
 	}
 }
 
+// 刷新redis状态
 func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -73,18 +74,23 @@ func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) 
 			})
 		}
 	}
+	//通过sentinel维护codis集群中每一组的主备关系
 	for _, server := range ctx.sentinel.Servers {
 		goStats(server, func(addr string) (*RedisStats, error) {
 			c, err := s.ha.redisp.GetClient(addr)
 			if err != nil {
 				return nil, err
 			}
+			//实际上就是将client加入到Pool的pool属性里面去，pool本质上就是map[String]*list.List
+			//键是client的addr,值是client本身
+			//如果client不存在，就新建一个空的list
 			defer s.ha.redisp.PutClient(c)
 			m, err := c.Info()
 			if err != nil {
 				return nil, err
 			}
 			sentinel := redis.NewSentinel(s.config.ProductName, s.config.ProductAuth)
+			//获得map[string]*SentinelGroup，键是每一组的master的名字，SentinelGroup则是主从对
 			p, err := sentinel.MastersAndSlavesClient(c)
 			if err != nil {
 				return nil, err
@@ -92,6 +98,7 @@ func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) 
 			return &RedisStats{Stats: m, Sentinel: p}, nil
 		})
 	}
+	//前面的所有gostats执行完之后，遍历Future的vmap，将值赋给Topom.stats.servers
 	go func() {
 		stats := make(map[string]*RedisStats)
 		for k, v := range fut.Wait() {
@@ -134,7 +141,7 @@ func (s *Topom) newProxyStats(p *models.Proxy, timeout time.Duration) *ProxyStat
 	}
 }
 
-func (s *Topom) RefreshProxyStats(timeout time.Duration) (*sync2.Future, error) {
+func (s *Topom) RefreshProxyStats(timeout time.Duration) (*sync2.Future, error) { // 刷新redis状态
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ctx, err := s.newContext()

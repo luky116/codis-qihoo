@@ -344,6 +344,7 @@ func (s *Topom) GroupPromoteServer(gid int, addr string) error {
 	}
 }
 
+//执行codis集群可感知的主从切换
 func (s *Topom) trySwitchGroupMaster(gid int, master string, cache *redis.InfoCache) error {
 	ctx, err := s.newContext()
 	if err != nil {
@@ -354,6 +355,7 @@ func (s *Topom) trySwitchGroupMaster(gid int, master string, cache *redis.InfoCa
 		return err
 	}
 
+	// 获取目标master的index值
 	var index = func() int {
 		for i, x := range g.Servers {
 			if x.Addr == master {
@@ -379,8 +381,10 @@ func (s *Topom) trySwitchGroupMaster(gid int, master string, cache *redis.InfoCa
 
 	log.Warnf("group-[%d] will switch master to server[%d] = %s", g.Id, index, g.Servers[index].Addr)
 
+	//执行主从切换，我们之前说过，codis集群中默认每个group的第一个server为master
 	g.Servers[0], g.Servers[index] = g.Servers[index], g.Servers[0]
 	g.OutOfSync = true
+	//更新zk信息
 	return s.storeUpdateGroup(g)
 }
 

@@ -106,11 +106,13 @@ func (s *Sentinel) dispatch(ctx context.Context, sentinel string, timeout time.D
 	}
 }
 
+//订阅"+switch-master"成功则返回true
 func (s *Sentinel) subscribeCommand(client *Client, sentinel string,
 	onSubscribed func()) error {
 	defer func() {
 		client.Close()
 	}()
+	// 即调用SUBSCRIBE命令来订阅切主信息，订阅的channels是switch-master，官方的解释是主的地址发生变更会往这个通道发送消息：
 	var channels = []interface{}{"+switch-master"}
 	go func() {
 		client.Send("SUBSCRIBE", channels...)
@@ -175,13 +177,17 @@ func (s *Sentinel) subscribeDispatch(ctx context.Context, sentinel string, timeo
 	return true, nil
 }
 
+// 让sentinel订阅名为”+switch-master”的channel，并从这个channel中读取主从切换的信息。
+// 将订阅成功与否写到results := make(chan bool, len(sentinels))中在，最后再遍历results
 func (s *Sentinel) Subscribe(sentinels []string, timeout time.Duration, onMajoritySubscribed func()) bool {
 	cntx, cancel := context.WithTimeout(s.Context, timeout)
 	defer cancel()
 
 	timeout += time.Second * 5
+	// 订阅成功与否
 	results := make(chan bool, len(sentinels))
 
+	// 集群中sentinel数量的半数以上
 	var majority = 1 + len(sentinels)/2
 
 	var subscribed atomic2.Int64
@@ -200,6 +206,7 @@ func (s *Sentinel) Subscribe(sentinels []string, timeout time.Duration, onMajori
 	}
 
 	for alive := len(sentinels); ; alive-- {
+		//如果超过半数sentinel都没有订阅成功
 		if alive < majority {
 			if cntx.Err() == nil {
 				s.printf("sentinel subscribe lost majority (%d/%d)", alive, len(sentinels))
@@ -297,6 +304,8 @@ func (s *Sentinel) mastersCommand(client *Client) (map[int]map[string]string, er
 			client.Close()
 		}
 	}()
+	// SENTINEL master 使用参考：http://redisdoc.com/topic/sentinel.html
+	// 作用：列出所有被监视的master服务
 	values, err := redigo.Values(client.Do("SENTINEL", "masters"))
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -307,6 +316,7 @@ func (s *Sentinel) mastersCommand(client *Client) (map[int]map[string]string, er
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
+		// sentinel的命名方式为：productName-groupId，所以可以解析出这个sentinel监控的groupID
 		gid, yes := s.isSameProduct(p["name"])
 		if yes {
 			masters[gid] = p
@@ -359,6 +369,9 @@ type SentinelMaster struct {
 	Epoch int64
 }
 
+// 通过SENTINEL INFO命令得到当前的主服务器，然后在各个group中更新主服务器信息。
+// 比方说，如果超过半数sentinel认为group中序号为1的server才是master，就把这台服务器和序号为0的server进行交换
+// 返回值： groupID -> 127.0.0.1:1234
 func (s *Sentinel) Masters(sentinels []string, timeout time.Duration) (map[int]string, error) {
 	cntx, cancel := context.WithTimeout(s.Context, timeout)
 	defer cancel()
@@ -370,6 +383,8 @@ func (s *Sentinel) Masters(sentinels []string, timeout time.Duration) (map[int]s
 
 	for i := range sentinels {
 		go func(sentinel string) {
+			//通过SENTINEL INFO命令得到该哨兵感知到的所有的master
+			// 注意，这里是每个 group 下面的所有 master
 			masters, err := s.mastersDispatch(cntx, sentinel, timeout)
 			if err != nil {
 				s.errorf(err, "sentinel-[%s] masters failed", sentinel)
@@ -405,6 +420,7 @@ func (s *Sentinel) Masters(sentinels []string, timeout time.Duration) (map[int]s
 			default:
 				s.printf("sentinel masters voted = (%d/%d) masters = %d (%v)", voted, len(sentinels), len(masters), cntx.Err())
 			}
+			//最终通过的方案必须是半数以上sentinel同意的
 			if voted < majority {
 				return nil, errors.Errorf("lost majority (%d/%d)", voted, len(sentinels))
 			}
@@ -416,9 +432,11 @@ func (s *Sentinel) Masters(sentinels []string, timeout time.Duration) (map[int]s
 			for gid, master := range m {
 				if current[gid] == nil || current[gid].Epoch < master.Epoch {
 					current[gid] = master
+					// groupID -> master 节点
 					masters[gid] = master.Addr
 				}
 			}
+			// 有记录，说明该sentinel已经投过票了
 			voted += 1
 		}
 	}
@@ -448,8 +466,12 @@ func (s *Sentinel) monitorGroupsCommand(client *Client, sentniel string, config 
 		return err
 	}
 	go func() {
+		// 开启监控
 		for gid, tcpAddr := range groups {
 			var ip, port = tcpAddr.IP.String(), tcpAddr.Port
+			// NodeName = Product-GroupID
+			// 参考文档：https://redis.io/docs/management/sentinel/
+			// 使用格式如下：sentinel monitor <master-name> <ip> <port> <quorum>
 			client.Send("SENTINEL", "monitor", s.NodeName(gid), ip, port, config.Quorum)
 		}
 		if len(groups) != 0 {
@@ -462,25 +484,46 @@ func (s *Sentinel) monitorGroupsCommand(client *Client, sentniel string, config 
 			return errors.Trace(err)
 		}
 	}
+	//设置参数
 	go func() {
 		for gid := range groups {
 			var args = []interface{}{"set", s.NodeName(gid)}
 			if config.ParallelSyncs != 0 {
+				/**
+				在发生failover主备切换时，这个选项指定了最多 可以有多少个slave同时对新的master进行同步，这个数字越小，
+				完成failover所需的时间就越长，但是如果这个数字越大，就意味着越多的 slave因为replication而不可用。
+				可以通过将这个值设为 1 来保证每次只有一个slave处于不能处理命令请求的状态。也可以理解为一次性修改几个slave指向新的new master
+				*/
 				args = append(args, "parallel-syncs", config.ParallelSyncs)
 			}
 			if config.DownAfter != 0 {
+				/**
+				sentinel会向master发送心跳PING来确认master是否存活，如果master在“一定时间范围”内不回应PONG 或者是回复了一个错误消息，
+				那么这个sentinel会主观地(单方面地)认为这个master已经不可用了(subjectively down, 也简称为SDOWN)。
+				而这个down-after-milliseconds就是用来指定这个“一定时间范围”的，单位是毫秒。
+				*/
 				args = append(args, "down-after-milliseconds", int(config.DownAfter/time.Millisecond))
 			}
 			if config.FailoverTimeout != 0 {
+				/**
+				如果sentinel A推荐sentinel B去执行failover，B会等待一段时间后，自行再次去对同一个master执行failover，
+				这个等待的时间是通过failover-timeout配置项去配置的。从这个规则可以看出，sentinel集群中的sentinel不会再同一时刻并发去failover同一个master，
+				第一个进行failover的sentinel如果失败了，另外一个将会在一定时间内进行重新进行failover，以此类推
+				*/
 				args = append(args, "failover-timeout", int(config.FailoverTimeout/time.Millisecond))
 			}
 			if s.Auth != "" {
 				args = append(args, "auth-pass", s.Auth)
 			}
 			if config.NotificationScript != "" {
+				/**
+				在群集failover时会触发执行指定的脚本。脚本的执行结果若为1，即稍后重试（最大重试次数为10）；
+				若为2，则执行结束。并且脚本最大执行时间为60秒，超时会被终止执行。使用方法如如sentinel notification-script mymaster ./check.sh
+				*/
 				args = append(args, "notification-script", config.NotificationScript)
 			}
 			if config.ClientReconfigScript != "" {
+				// 在重新配置new master,new slave过程,可以触发的脚本
 				args = append(args, "client-reconfig-script", config.ClientReconfigScript)
 			}
 			client.Send("SENTINEL", args...)
@@ -514,10 +557,12 @@ func (s *Sentinel) monitorGroupsDispatch(ctx context.Context, sentinel string, t
 	return nil
 }
 
+// groups 是group下面的主redis server
 func (s *Sentinel) MonitorGroups(sentinels []string, timeout time.Duration, config *MonitorConfig, groups map[int]string) error {
 	cntx, cancel := context.WithTimeout(s.Context, timeout)
 	defer cancel()
 
+	// groupID -> redisServer
 	resolve := make(map[int]*net.TCPAddr)
 
 	var exit = make(chan error, 1)
@@ -559,6 +604,8 @@ func (s *Sentinel) MonitorGroups(sentinels []string, timeout time.Duration, conf
 
 	for i := range sentinels {
 		go func(sentinel string) {
+			// 这里是多个 sentinel，组成一个集群，每个sentinel都会监听集群的所有master节点的 redis serve
+			// 调用SENTINEL MONITOR命令，监控集群中的group。监控之后，根据dashboard.toml中设置的sentinel参数对sentinel进行设置
 			err := s.monitorGroupsDispatch(cntx, sentinel, timeout, config, resolve)
 			if err != nil {
 				s.errorf(err, "sentinel-[%s] monitor failed", sentinel)
@@ -705,6 +752,10 @@ func (s *Sentinel) RemoveGroupsAll(sentinels []string, timeout time.Duration) er
 
 	for i := range sentinels {
 		go func(sentinel string) {
+			//传入sentinel的地址，调用/utils/redis/client.go中的NewClient方法，新建一个sentinel的redisClient连接
+			//然后，调用SENTINEL masters 显示被这个sentinel监控的所有master以及它们的状态
+			//如果这个sentinel目前对于productName-groupId这个group有监控
+			//就使用SENTINEL REMOVE <name> 命令sentinel逐个放弃上面的监听
 			err := s.removeGroupsAllDispatch(cntx, sentinel, timeout)
 			if err != nil {
 				s.errorf(err, "sentinel-[%s] remove failed", sentinel)
@@ -720,6 +771,7 @@ func (s *Sentinel) RemoveGroupsAll(sentinels []string, timeout time.Duration) er
 			if last != nil {
 				return last
 			}
+			// 当Done这个channel被关闭，Err说明了Context被cancel的原因
 			return errors.Trace(cntx.Err())
 		case err := <-results:
 			if err != nil {
@@ -781,6 +833,11 @@ func (s *Sentinel) MastersAndSlaves(sentinel string, timeout time.Duration) (map
 
 func (s *Sentinel) FlushConfig(sentinel string, timeout time.Duration) error {
 	return s.do(sentinel, timeout, func(c *Client) error {
+		// 参考文档：https://redis.io/docs/management/sentinel/
+		// 强制 Sentinel 重写其在磁盘上的配置，包括当前的 Sentinel 状态。
+		// 通常，每次状态发生变化时，Sentinel 都会重写配置（在重启后持久保存在磁盘上的状态子集的上下文中）。
+		// 然而，有时由于操作错误、磁盘故障、软件包升级脚本或配置管理器，配置文件可能会丢失。
+		// 在这些情况下，强制 Sentinel 重写配置文件的方法很方便。即使以前的配置文件完全丢失，此命令也能正常工作。
 		_, err := c.Do("SENTINEL", "flushconfig")
 		if err != nil {
 			return err

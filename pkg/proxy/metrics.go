@@ -39,6 +39,7 @@ func (p *Proxy) startMetricsReporter(d time.Duration, do, cleanup func() error) 
 	}()
 }
 
+// 上报 metric 信息
 func (p *Proxy) startMetricsJson() {
 	server := p.config.MetricsReportServer
 	period := p.config.MetricsReportPeriod.Duration()

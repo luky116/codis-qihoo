@@ -20,6 +20,8 @@ const MaxSlotNum = models.MaxSlotNum
 type context struct {
 	slots []*models.SlotMapping
 	group map[int]*models.Group
+	// token -> proxy
+	// token 是proxy项目返回的唯一标识，防止重复添加proxy
 	proxy map[string]*models.Proxy
 
 	sentinel *models.Sentinel
@@ -232,6 +234,7 @@ func (ctx *context) minSyncActionIndex() string {
 
 func (ctx *context) getGroupMaster(gid int) string {
 	if g := ctx.group[gid]; g != nil && len(g.Servers) != 0 {
+		// 第1个就是master，后面都是从服务器
 		return g.Servers[0].Addr
 	}
 	return ""
@@ -282,6 +285,7 @@ func (ctx *context) isGroupLocked(gid int) bool {
 	return false
 }
 
+// todo
 func (ctx *context) isGroupPromoting(gid int) bool {
 	if g := ctx.group[gid]; g != nil {
 		return g.Promoting.State != models.ActionNothing

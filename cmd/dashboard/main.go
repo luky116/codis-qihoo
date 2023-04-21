@@ -62,7 +62,7 @@ Options:
 			log.StdLog = log.New(w, "")
 		}
 	}
-	log.SetLevel(log.LevelInfo)
+	log.SetLevel(log.LevelDebug)
 
 	if s, ok := utils.Argument(d, "--log-level"); ok {
 		if !log.SetLevelString(s) {
@@ -106,6 +106,7 @@ Options:
 
 	}
 
+	// codis-demo 产品名字
 	if s, ok := utils.Argument(d, "--product_name"); ok {
 		config.ProductName = s
 		log.Warnf("option --product_name = %s", s)
@@ -115,6 +116,7 @@ Options:
 		log.Warnf("option --product_auth = %s", s)
 	}
 
+	// 初始化存储介质，比如：zk、etcd、本地文件等等
 	client, err := models.NewClient(config.CoordinatorName, config.CoordinatorAddr, config.CoordinatorAuth, time.Minute)
 	if err != nil {
 		log.PanicErrorf(err, "create '%s' client to '%s' failed", config.CoordinatorName, config.CoordinatorAddr)
@@ -159,8 +161,12 @@ Options:
 	go func() {
 		defer s.Close()
 		c := make(chan os.Signal, 1)
+		// 用来接收系统signal
+		// 这样做的目的是，当你强行停止掉dashboard进程，console上就会出现日志：
+		// Process finished with exit code 137 (interrupted by signal 9: SIGKILL)
 		signal.Notify(c, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
 
+		//将收到的系统信号读取并打印在日志
 		sig := <-c
 		log.Warnf("[%p] dashboard receive signal = '%v'", s, sig)
 	}()

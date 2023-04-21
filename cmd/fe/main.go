@@ -85,7 +85,7 @@ Options:
 			log.StdLog = log.New(w, "")
 		}
 	}
-	log.SetLevel(log.LevelInfo)
+	log.SetLevel(log.LevelDebug)
 
 	if s, ok := utils.Argument(d, "--log-level"); ok {
 		if !log.SetLevelString(s) {
@@ -100,6 +100,7 @@ Options:
 	}
 	log.Warnf("set ncpu = %d", runtime.GOMAXPROCS(0))
 
+	// 0.0.0.0:9090 FE 的访问链接
 	listen := utils.ArgumentMust(d, "--listen")
 	log.Warnf("set listen = %s", listen)
 
@@ -167,6 +168,8 @@ Options:
 		}
 		defer c.Close()
 
+		// 这里指定从哪里加载配置信息，需要和 proxy 的设置保持一致
+		// proxy 从这里读取主从配置信息，FE 往这里写数据
 		loader = &DynamicLoader{c}
 	}
 

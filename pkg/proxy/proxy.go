@@ -27,38 +27,40 @@ import (
 )
 
 type Proxy struct {
-	mu sync.Mutex
+	mu sync.Mutex //互斥锁
 
-	xauth string
-	model *models.Proxy
+	xauth string        //账号授权信息
+	model *models.Proxy //proxy的基本设置
 
-	exit struct {
+	exit struct { //用于关闭
 		C chan struct{}
 	}
-	online bool
-	closed bool
+	online bool //是否在线
+	closed bool //是否关闭
 
-	config *Config
-	router *Router
-	ignore []byte
+	config *Config //配置参数
+	router *Router //Router中比较重要的是连接池和slots
+	ignore []byte  //设置堆占位符以减少GC频率。
 
-	lproxy net.Listener
-	ladmin net.Listener
+	lproxy net.Listener //proxy的监听处理逻辑，默认端口19000
+	ladmin net.Listener //admin的监听处理逻辑，默认端口11080
 
-	ha struct {
+	ha struct { //高可用相关、哨兵监听
 		monitor *redis.Sentinel
 		masters map[int]string
 		servers []string
 	}
-	jodis *Jodis
+	jodis *Jodis //jodis连接
 }
 
 var ErrClosedProxy = errors.New("use of closed proxy")
 
 func New(config *Config) (*Proxy, error) {
+	// 检查配置属性是否合法，包括空检查和值范围检查
 	if err := config.Validate(); err != nil {
 		return nil, errors.Trace(err)
 	}
+	// productName 命名规范，只能是小写字母和-的组合
 	if err := models.ValidateProduct(config.ProductName); err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -66,6 +68,7 @@ func New(config *Config) (*Proxy, error) {
 	s := &Proxy{}
 	s.config = config
 	s.exit.C = make(chan struct{})
+	// 创建路由连接池子，初始化 1024 个 slots
 	s.router = NewRouter(config)
 	s.ignore = make([]byte, config.ProxyHeapPlaceholder.Int64())
 
@@ -76,6 +79,9 @@ func New(config *Config) (*Proxy, error) {
 	s.model.DataCenter = config.ProxyDataCenter
 	s.model.Pid = os.Getpid()
 	s.model.Pwd, _ = os.Getwd()
+	// 获取系统信息
+	// Darwin sanyuedeMacBook-Pro.local 22.3.0 Darwin Kernel Version 22.3.0: Mon Jan 30 20:42:11 PST 2023;
+	// root:xnu-8792.81.3~2/RELEASE_X86_64 x86_64
 	if b, err := exec.Command("uname", "-a").Output(); err != nil {
 		log.WarnErrorf(err, "run command uname failed")
 	} else {
@@ -83,7 +89,7 @@ func New(config *Config) (*Proxy, error) {
 	}
 	s.model.Hostname = utils.Hostname
 
-	if err := s.setup(config); err != nil {
+	if err := s.setup(config); err != nil { // 1、启动服务监听 admin(:11080) 和 proxy(:19000) 的请求；2、初始化auth鉴权
 		s.Close()
 		return nil, err
 	}
@@ -92,9 +98,11 @@ func New(config *Config) (*Proxy, error) {
 
 	unsafe2.SetMaxOffheapBytes(config.ProxyMaxOffheapBytes.Int64())
 
-	go s.serveAdmin()
-	go s.serveProxy()
+	go s.serveAdmin() // 创建后台接口服务，提供给 dashboard使用，监听端口 11080
+	go s.serveProxy() // 创建proxy服务，监听端口 19000
 
+	// 定时上报 metric 信息给指端的 server 端服务器。
+	// 【拓展】后面可以基于此做监控
 	s.startMetricsJson()
 	s.startMetricsInfluxdb()
 	s.startMetricsStatsd()
@@ -102,28 +110,29 @@ func New(config *Config) (*Proxy, error) {
 	return s, nil
 }
 
+// 绑定 admin 和 proxy 的监听端口，但是没有加处理逻辑
 func (s *Proxy) setup(config *Config) error {
-	proto := config.ProtoType
-	if l, err := net.Listen(proto, config.ProxyAddr); err != nil {
+	proto := config.ProtoType                                      // tcp4
+	if l, err := net.Listen(proto, config.ProxyAddr); err != nil { // ProxyAddr=0.0.0.0:19000，19000 也是 server 服务的监听端口，Set bind address for proxy
 		return errors.Trace(err)
 	} else {
 		s.lproxy = l
 
-		x, err := utils.ReplaceUnspecifiedIP(proto, l.Addr().String(), config.HostProxy)
+		x, err := utils.ReplaceUnspecifiedIP(proto, l.Addr().String(), config.HostProxy) // l.Addr().String()=0.0.0.0:19000 config.HostProxy=tcp4
 		if err != nil {
 			return err
 		}
-		s.model.ProtoType = proto
-		s.model.ProxyAddr = x
+		s.model.ProtoType = proto // tcp4
+		s.model.ProxyAddr = x     // sanyuedeMacBook-Pro.local:19000
 	}
 
 	proto = "tcp"
-	if l, err := net.Listen(proto, config.AdminAddr); err != nil {
+	if l, err := net.Listen(proto, config.AdminAddr); err != nil { // proto=tcp, config.AdminAddr=0.0.0.0:11080，Set bind address for admin(rpc), tcp only.
 		return errors.Trace(err)
 	} else {
 		s.ladmin = l
 
-		x, err := utils.ReplaceUnspecifiedIP(proto, l.Addr().String(), config.HostAdmin)
+		x, err := utils.ReplaceUnspecifiedIP(proto, l.Addr().String(), config.HostAdmin) // x=sanyuedeMacBook-Pro.local:11080
 		if err != nil {
 			return err
 		}
@@ -135,7 +144,7 @@ func (s *Proxy) setup(config *Config) error {
 		s.lproxy.Addr().String(),
 		s.ladmin.Addr().String(),
 	)
-	s.xauth = rpc.NewXAuth(
+	s.xauth = rpc.NewXAuth( // 初始化auth鉴权
 		config.ProductName,
 		config.ProductAuth,
 		s.model.Token,
@@ -369,6 +378,7 @@ func (s *Proxy) rewatchSentinels(servers []string) {
 	}
 }
 
+// 创建后台接口服务，提供给 dashboard使用，监听端口 11080
 func (s *Proxy) serveAdmin() {
 	if s.IsClosed() {
 		return
@@ -407,18 +417,22 @@ func (s *Proxy) serveProxy() {
 			eh <- err
 		}()
 		for {
+			// 接收accept请求。对于client的每个连接，只会打开一个Session
 			c, err := s.acceptConn(l)
 			if err != nil {
 				return err
 			}
+			//创建并启动session处理
 			NewSession(c, s.config).Start(s.router)
 		}
 	}(s.lproxy)
 
 	if d := s.config.BackendPingPeriod.Duration(); d != 0 {
+		// Router可用检测
 		go s.keepAlive(d)
 	}
 
+	// 夯住协程，直到程序退出，或是发生错误
 	select {
 	case <-s.exit.C:
 		log.Warnf("[%p] proxy shutdown", s)

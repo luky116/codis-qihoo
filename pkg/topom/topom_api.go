@@ -28,6 +28,7 @@ type apiServer struct {
 	topom *Topom
 }
 
+// 初始化路由信息
 func newApiServer(t *Topom) http.Handler {
 	m := martini.New()
 	m.Use(martini.Recovery())
@@ -625,6 +626,7 @@ func (s *apiServer) SlotCreateActionSome(params martini.Params) (int, string) {
 	}
 }
 
+// slot 迁移入口
 func (s *apiServer) SlotCreateActionRange(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)

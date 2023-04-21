@@ -114,11 +114,15 @@ func (s *Topom) rewatchSentinels(servers []string) {
 	if len(servers) == 0 {
 		s.ha.masters = nil
 	} else {
+		// Topom.ha.monitor本身相当于一个上帝视角的sentinel。它本身并不是一个实际的sentinel服务器，但是它负责收集各个sentinel的监控信息，并对集群作出反馈。
+		//创建Topom中的ha.monitor
 		s.ha.monitor = redis.NewSentinel(s.config.ProductName, s.config.ProductAuth)
 		s.ha.monitor.LogFunc = log.Warnf
 		s.ha.monitor.ErrFunc = log.WarnErrorf
 		go func(p *redis.Sentinel) {
 			var trigger = make(chan struct{}, 1)
+			//一个延时工具类，要么休眠一秒，要么休眠现在距离deadline的时间，取决于哪个更短
+			//如果现在已经过了deadline，就不休眠
 			delayUntil := func(deadline time.Time) {
 				for !p.IsCanceled() {
 					var d = deadline.Sub(time.Now())
@@ -139,6 +143,7 @@ func (s *Topom) rewatchSentinels(servers []string) {
 				for !p.IsCanceled() {
 					timeout := time.Minute * 15
 					retryAt := time.Now().Add(time.Second * 10)
+					//订阅切主信息
 					if !p.Subscribe(servers, timeout, callback) {
 						delayUntil(retryAt)
 					} else {
@@ -151,11 +156,13 @@ func (s *Topom) rewatchSentinels(servers []string) {
 					var success int
 					for i := 0; i != 10 && !p.IsCanceled() && success != 2; i++ {
 						timeout := time.Second * 5
+						//得到最新的Master
 						masters, err := p.Masters(servers, timeout)
 						if err != nil {
 							log.WarnErrorf(err, "fetch group masters failed")
 						} else {
 							if !p.IsCanceled() {
+								//切主
 								s.SwitchMasters(masters)
 							}
 							success += 1
@@ -169,6 +176,11 @@ func (s *Topom) rewatchSentinels(servers []string) {
 	log.Warnf("rewatch sentinels = %v", servers)
 }
 
+// 总结一下，当一台sentinel第一次被添加到codis集群，或者是脱离codis集群之后，需要执行resync操作来重新对集群做监控。
+// 首先遍历所有server，放弃其原先监控的信息。格式化之后，再重新监控集群中的所有group，并根据dashboard.toml中的配置进行监控设置。
+// 最后，新建Topom.ha.monitor上帝视角sentinel，让集群中的所有sentinel订阅”+switch-master”，如果发生主从切换（即可以从channel中读出值），
+// 要从哨兵中读出当前的master地址，并在每个codis group中将对应的server推到group的第一个。设置每个Proxy的ha.servers为当前ctx中的sentinel，
+// 再执行一次上面的rewatchSentinels方法,最后再将sentinel的OutofSync更新为true，然后再更新zk下存储的信息。
 func (s *Topom) ResyncSentinels() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -194,19 +206,23 @@ func (s *Topom) ResyncSentinels() error {
 	}
 
 	sentinel := redis.NewSentinel(s.config.ProductName, s.config.ProductAuth)
+	// 让每个sentinel放弃之前的监听
 	if err := sentinel.RemoveGroupsAll(p.Servers, s.config.SentinelClientTimeout.Duration()); err != nil {
 		log.WarnErrorf(err, "remove sentinels failed")
 	}
+	// 设置sentinel监听所有的Group
 	if err := sentinel.MonitorGroups(p.Servers, s.config.SentinelClientTimeout.Duration(), config, ctx.getGroupMasters()); err != nil {
 		log.WarnErrorf(err, "resync sentinels failed")
 		return err
 	}
+	//设置Group Master
 	s.rewatchSentinels(p.Servers)
 
 	var fut sync2.Future
 	for _, p := range ctx.proxy {
 		fut.Add()
 		go func(p *models.Proxy) {
+			//通知Proxy更新
 			err := s.newProxyClient(p).SetSentinels(ctx.sentinel)
 			if err != nil {
 				log.ErrorErrorf(err, "proxy-[%s] resync sentinel failed", p.Token)

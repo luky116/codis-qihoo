@@ -17,6 +17,7 @@ import (
 	redigo "github.com/garyburd/redigo/redis"
 )
 
+//RedisClient结构，对于每台redis服务器，都会有多个连接，过期的连接将会被清除
 type Client struct {
 	conn redigo.Conn
 	Addr string
@@ -24,6 +25,7 @@ type Client struct {
 
 	Database int
 
+	//上次使用时间，用于看某个client是否应该被回收
 	LastUse time.Time
 	Timeout time.Duration
 
@@ -224,6 +226,30 @@ func (c *Client) SetMaster(master string) error {
 	return nil
 }
 
+// 每次调用 redis 的 slotsmgrttagslot 命令进行一次迁移，只迁移一个 key；迁移完成后暂停一个时间，再继续进行后续迁移操作；
+// 应该是为了避免大量的迁移操作，影响了业务对 redis 的读写
+//
+/**
+slotsmgrttagslot 的命令解释参考文档：https://github.com/CodisLabs/codis/blob/master/doc/redis_change_zh.md
+命令格式：SLOTSMGRTSLOT host port timeout slot
+命令说明：随机选择 slot 下的 1 个 key-value 到迁移到目标机（同步 IO 操作）
+	如果当前 slot 已经空了或者选择的 key 刚好过期，返回 0
+	如果当前 slot 下面还有 key 则选择一个进行迁移
+	同时返回当前 slot 剩余 key 的个数
+	迁移过程在目标机器调用 slotsrestore 命令，迁移会 覆盖旧值
+
+命令参数：
+	host:port - 目标机
+	redis 内部缓存到 host:port 的连接 30s，超时或错误则关闭
+	timeout - 操作超时，单位 ms
+	过程需要 3 个同步操作：
+		建立连接（可被缓存优化）
+		发送 key-value 数据
+		接受目标机返回
+	指令保证每个操作不超过 timeout
+	slot - 指定迁移的 slot 序号
+*/
+
 func (c *Client) MigrateSlot(slot int, target string) (int, error) {
 	host, port, err := net.SplitHostPort(target)
 	if err != nil {
@@ -310,8 +336,10 @@ type Pool struct {
 	mu sync.Mutex
 
 	auth string
+	// 数据结构：addr -> Client
 	pool map[string]*list.List
 
+	// 超过这个时间未使用，被视为过期，会从pool中被清除掉
 	timeout time.Duration
 
 	exit struct {
@@ -337,6 +365,7 @@ func NewPool(auth string, timeout time.Duration) *Pool {
 				case <-p.exit.C:
 					return
 				case <-ticker.C:
+					//每隔一分钟清理Pool中无效的Client
 					p.Cleanup()
 				}
 			}
@@ -405,6 +434,8 @@ func (p *Pool) getClientFromCache(addr string) (*Client, error) {
 	if list := p.pool[addr]; list != nil {
 		for i := list.Len(); i != 0; i-- {
 			c := list.Remove(list.Front()).(*Client)
+			//一个client可被回收的条件是，Pool的timeout为0，或者这个client上一次使用距离现在小于Pool.timeout
+			//ha和stats里面的Pool的timeout为5秒，action的则根据配置文件dashboard.toml中的migration_timeout一项来决定
 			if !c.isRecyclable() {
 				c.Close()
 			} else {

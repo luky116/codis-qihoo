@@ -13,10 +13,11 @@ import (
 )
 
 type Conn struct {
+	// 用户的请求对象，包含了用户请求的命令明文
 	Sock net.Conn
 
 	*Decoder
-	*Encoder
+	*Encoder // 存放执行的结果
 
 	ReaderTimeout time.Duration
 	WriterTimeout time.Duration

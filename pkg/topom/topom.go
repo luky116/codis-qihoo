@@ -29,8 +29,16 @@ type Topom struct {
 	mu sync.Mutex
 
 	xauth string
+	//初始化之后，这个属性中的信息可以在zk中看到，就像models.Proxy一样
+	//路径是/codis3/codis-wujiang/topom
 	model *models.Topom
+
+	//存储着zkClient（或是读取本地配置）以及product-name，Topom与zk交互都是通过这个store
 	store *models.Store
+
+	//缓存结构，如果缓存为空就通过store从zk（或是读取本地配置）中取出slot的信息并填充cache
+	//不是只有第一次启动的时候cache会为空，如果集群中的元素（server，slot等等）发生变化，都会调用dirtyCache，将cache中的信息置为nil
+	//这样下一次调用s.newContext()获取上下文信息获取上下文信息的时候，就会通过Topom.store从zk中重新拉取
 	cache struct {
 		hooks list.List
 		slots []*models.SlotMapping
@@ -43,14 +51,20 @@ type Topom struct {
 	exit struct {
 		C chan struct{}
 	}
-
+	//与dashboard相关的所有配置信息，比如：../codis/config/dashboard.toml
 	config *Config
 	online bool
 	closed bool
 
 	ladmin net.Listener
 
+	//槽进行迁移的时候使用
 	action struct {
+		//这个pool，其实就是map[string]*list.List，用于保存redis的结构，里面有addr,auth和Timeout。
+		//相当于缓存，需要的时候从这里取，否则就新建然后put进来
+		//键为redis-serer服务器的地址，值为与这台服务器建立的连接，过期的连接会被删除
+		//timeout为配置文件dashboard.toml中的migration_timeout选项所配
+		// redis-server addr -> redis-server Client
 		redisp *redis.Pool
 
 		interval atomic2.Int64
@@ -59,20 +73,30 @@ type Topom struct {
 		progress struct {
 			status atomic.Value
 		}
+		//一个计数器，有一个slot等待迁移，就加一；执行一个slot的迁移，就减一
 		executor atomic2.Int64
 	}
 
+	//存储集群中redis和proxy详细信息，goroutine每次刷新redis和proxy之后，都会将结果存在这里
 	stats struct {
+		//timeout为5秒
+		// todo 描述作用
 		redisp *redis.Pool
 
+		// redis-server
 		servers map[string]*RedisStats
+		// proxy
 		proxies map[string]*ProxyStats
 	}
 
+	//这个在使用哨兵的时候会用到，存储在fe中配置的哨兵以及哨兵所监控的redis主服务器
 	ha struct {
+		//timeout为5秒
+		// todo 描述作用
 		redisp *redis.Pool
 
 		monitor *redis.Sentinel
+		// groupID -> master redis-server's host
 		masters map[int]string
 	}
 }
@@ -80,6 +104,7 @@ type Topom struct {
 var ErrClosedTopom = errors.New("use of closed topom")
 
 func New(client models.Client, config *Config) (*Topom, error) {
+	// 校验配置文件
 	if err := config.Validate(); err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -107,10 +132,13 @@ func New(client models.Client, config *Config) (*Topom, error) {
 	}
 	s.store = models.NewStore(client, config.ProductName)
 
+	//新建redis pool
 	s.stats.redisp = redis.NewPool(config.ProductAuth, time.Second*5)
 	s.stats.servers = make(map[string]*RedisStats)
 	s.stats.proxies = make(map[string]*ProxyStats)
 
+	// Topom的ladmin监听配置文件中的admin_addr，生成Token和Xauth
+	// 下面的 go s.serveAdmin() 是启动负责监听的路由信息
 	if err := s.setup(config); err != nil {
 		s.Close()
 		return nil, err
@@ -118,12 +146,15 @@ func New(client models.Client, config *Config) (*Topom, error) {
 
 	log.Warnf("create new topom:\n%s", s.model.Encode())
 
+	//采用martini框架，得到路由，并从路由得到handler
 	go s.serveAdmin()
 
 	return s, nil
 }
 
+//Topom的ladmin监听配置文件中的admin_addr，生成Token和Xauth
 func (s *Topom) setup(config *Config) error {
+	// admin_addr: 0.0.0.0:18080
 	if l, err := net.Listen("tcp", config.AdminAddr); err != nil {
 		return errors.Trace(err)
 	} else {
@@ -168,6 +199,7 @@ func (s *Topom) Close() error {
 	defer s.store.Close()
 
 	if s.online {
+		// 清理锁配置
 		if err := s.store.Release(); err != nil {
 			log.ErrorErrorf(err, "store: release lock of %s failed", s.config.ProductName)
 			return errors.Errorf("store: release lock of %s failed", s.config.ProductName)
@@ -185,6 +217,7 @@ func (s *Topom) Start(routines bool) error {
 	if s.online {
 		return nil
 	} else {
+		// 在zk/本地目录中创建路径：/codis3/codis-wujiang/topom
 		if err := s.store.Acquire(s.model); err != nil {
 			log.ErrorErrorf(err, "store: acquire lock of %s failed", s.config.ProductName)
 			return errors.Errorf("store: acquire lock of %s failed", s.config.ProductName)
@@ -204,6 +237,7 @@ func (s *Topom) Start(routines bool) error {
 	go func() {
 		for !s.IsClosed() {
 			if s.IsOnline() {
+				// 刷新redis状态
 				w, _ := s.RefreshRedisStats(time.Second)
 				if w != nil {
 					w.Wait()
@@ -216,6 +250,7 @@ func (s *Topom) Start(routines bool) error {
 	go func() {
 		for !s.IsClosed() {
 			if s.IsOnline() {
+				//刷新proxy状态
 				w, _ := s.RefreshProxyStats(time.Second)
 				if w != nil {
 					w.Wait()
@@ -228,6 +263,7 @@ func (s *Topom) Start(routines bool) error {
 	go func() {
 		for !s.IsClosed() {
 			if s.IsOnline() {
+				//处理slot操作
 				if err := s.ProcessSlotAction(); err != nil {
 					log.WarnErrorf(err, "process slot action failed")
 					time.Sleep(time.Second * 5)
@@ -240,6 +276,7 @@ func (s *Topom) Start(routines bool) error {
 	go func() {
 		for !s.IsClosed() {
 			if s.IsOnline() {
+				//处理同步操作
 				if err := s.ProcessSyncAction(); err != nil {
 					log.WarnErrorf(err, "process sync action failed")
 					time.Sleep(time.Second * 5)
@@ -431,6 +468,7 @@ func (s *Topom) serveAdmin() {
 	eh := make(chan error, 1)
 	go func(l net.Listener) {
 		h := http.NewServeMux()
+		// 初始化 dashboard 对外提供接口
 		h.Handle("/", newApiServer(s))
 		hs := &http.Server{Handler: h}
 		eh <- hs.Serve(l)

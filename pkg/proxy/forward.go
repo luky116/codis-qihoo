@@ -34,11 +34,13 @@ func (d *forwardSync) GetId() int {
 
 func (d *forwardSync) Forward(s *Slot, r *Request, hkey []byte) error {
 	s.lock.RLock()
+	//返回一个连接,并且将请求放入BackendConn的input中
 	bc, err := d.process(s, r, hkey)
 	s.lock.RUnlock()
 	if err != nil {
 		return err
 	}
+	//使session中的loopWriter会在Batch处等待，处理后返回。
 	bc.PushBack(r)
 	return nil
 }
@@ -73,7 +75,7 @@ func (d *forwardSemiAsync) Forward(s *Slot, r *Request, hkey []byte) error {
 	var loop int
 	for {
 		s.lock.RLock()
-		bc, retry, err := d.process(s, r, hkey)
+		bc, retry, err := d.process(s, r, hkey) //这里只是返回一个连接,【并且将请求放入BackendConn的input中】，hkey=name
 		s.lock.RUnlock()
 
 		switch {
@@ -81,7 +83,7 @@ func (d *forwardSemiAsync) Forward(s *Slot, r *Request, hkey []byte) error {
 			return err
 		case !retry:
 			if bc != nil {
-				bc.PushBack(r)
+				bc.PushBack(r) //使session中的loopWriter会在Batch处等待，处理后返回。
 			}
 			return nil
 		}
@@ -105,12 +107,12 @@ func (d *forwardSemiAsync) Forward(s *Slot, r *Request, hkey []byte) error {
 }
 
 func (d *forwardSemiAsync) process(s *Slot, r *Request, hkey []byte) (_ *BackendConn, retry bool, _ error) {
-	if s.backend.bc == nil {
+	if s.backend.bc == nil { // bc为空，说明该slot没有节点，直接返回
 		log.Debugf("slot-%04d is not ready: hash key = '%s'",
 			s.id, hkey)
 		return nil, false, ErrSlotIsNotReady
 	}
-	if s.migrate.bc != nil && len(hkey) != 0 {
+	if s.migrate.bc != nil && len(hkey) != 0 { // 如果migrate不为空，说明正在迁移。调用slotsmgrt方法强制迁移
 		resp, moved, err := d.slotsmgrtExecWrapper(s, hkey, r.Database, r.Seed16(), r.Multi)
 		switch {
 		case err != nil:
@@ -213,9 +215,11 @@ func (d *forwardHelper) slotsmgrtExecWrapper(s *Slot, hkey []byte, database int3
 	}
 }
 
+// 如果只读，则打到从节点来执行
+// 否则取DB的连接来处理
 func (d *forwardHelper) forward2(s *Slot, r *Request) *BackendConn {
-	var database, seed = r.Database, r.Seed16()
-	if s.migrate.bc == nil && !r.IsMasterOnly() && len(s.replicaGroups) != 0 {
+	var database, seed = r.Database, r.Seed16()                                // 0, 57546
+	if s.migrate.bc == nil && !r.IsMasterOnly() && len(s.replicaGroups) != 0 { // 如果是读操作并且可读从节点，则随机从从节点选择一个执行
 		for _, group := range s.replicaGroups {
 			var i = seed
 			for range group {
@@ -226,5 +230,5 @@ func (d *forwardHelper) forward2(s *Slot, r *Request) *BackendConn {
 			}
 		}
 	}
-	return s.backend.bc.BackendConn(database, seed, true)
+	return s.backend.bc.BackendConn(database, seed, true) //从sharedBackendConn中取出一个BackendConn（sharedBackendConn中储存了BackendConn组成的二维切片）
 }

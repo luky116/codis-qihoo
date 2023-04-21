@@ -25,6 +25,7 @@ func (s *Topom) CreateProxy(addr string) error {
 	}
 	c := s.newProxyClient(p)
 
+	// 确认 proxy 是否在运行
 	if err := c.XPing(); err != nil {
 		return errors.Errorf("proxy@%s check xauth failed, %s", addr, err)
 	}
@@ -35,6 +36,7 @@ func (s *Topom) CreateProxy(addr string) error {
 	}
 	defer s.dirtyProxyCache(p.Token)
 
+	// 添加缓存
 	if err := s.storeCreateProxy(p); err != nil {
 		return err
 	} else {

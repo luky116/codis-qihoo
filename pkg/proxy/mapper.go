@@ -274,14 +274,14 @@ func getOpInfo(multi []*redis.Resp) (string, OpFlag, error) {
 		return "", 0, ErrBadMultiBulk
 	}
 
-	var upper [MaxOpStrLen]byte
+	var upper [MaxOpStrLen]byte // 64 位长度
 
-	var op = multi[0].Value
-	if len(op) == 0 || len(op) > len(upper) {
+	var op = multi[0].Value                   // "GET"
+	if len(op) == 0 || len(op) > len(upper) { // 说明，不管是命令还是参数，最大长度不能超过了64位
 		return "", 0, ErrBadOpStrLen
 	}
-	for i := range op {
-		if c := charmap[op[i]]; c != 0 {
+	for i := range op { // GET
+		if c := charmap[op[i]]; c != 0 { // 统一转成大写
 			upper[i] = c
 		} else {
 			return strings.ToUpper(string(op)), FlagMayWrite, nil
@@ -289,7 +289,7 @@ func getOpInfo(multi []*redis.Resp) (string, OpFlag, error) {
 	}
 	op = upper[:len(op)]
 	if r, ok := opTable[string(op)]; ok {
-		return r.Name, r.Flag, nil
+		return r.Name, r.Flag, nil // GET, 0
 	}
 	return string(op), FlagMayWrite, nil
 }
@@ -309,11 +309,11 @@ func Hash(key []byte) uint32 {
 
 func getHashKey(multi []*redis.Resp, opstr string) []byte {
 	var index = 1
-	switch opstr {
+	switch opstr { // COMMAND
 	case "ZINTERSTORE", "ZUNIONSTORE", "EVAL", "EVALSHA":
 		index = 3
 	}
-	if index < len(multi) {
+	if index < len(multi) { // MULTI = ["COMMAND"]
 		return multi[index].Value
 	}
 	return nil
