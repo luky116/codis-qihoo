@@ -512,19 +512,23 @@ func (s *Topom) SyncActionPrepare() (string, error) {
 		return "", err
 	}
 
+	// 获取最小的待同步的 codis-server 的 addr，挨个进行处理
 	addr := ctx.minSyncActionIndex()
 	if addr == "" {
 		return "", nil
 	}
 
+	// g = group
 	g, index, err := ctx.getGroupByServer(addr)
 	if err != nil {
 		return "", err
 	}
+	// ActionNothing 说明该 group 空闲，可以从主服务器同步数据
 	if g.Promoting.State != models.ActionNothing {
 		return "", nil
 	}
 
+	// 检查 server 的异常状态
 	if g.Servers[index].Action.State != models.ActionPending {
 		return "", errors.Errorf("server-[%s] action state is invalid", addr)
 	}

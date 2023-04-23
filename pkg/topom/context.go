@@ -193,6 +193,8 @@ func (ctx *context) getGroupIndex(g *models.Group, addr string) (int, error) {
 	return -1, errors.Errorf("group-[%d] doesn't have server-[%s]", g.Id, addr)
 }
 
+// addr = codis server's addr
+// 获取 codi-server 所在的 group
 func (ctx *context) getGroupByServer(addr string) (*models.Group, int, error) {
 	for _, g := range ctx.group {
 		for i, x := range g.Servers {
@@ -215,6 +217,7 @@ func (ctx *context) maxSyncActionIndex() (maxIndex int) {
 	return maxIndex
 }
 
+// 获取最小的需要进行同步的 codis-serveer
 func (ctx *context) minSyncActionIndex() string {
 	var d *models.GroupServer
 	for _, g := range ctx.group {

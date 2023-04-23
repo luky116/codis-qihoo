@@ -15,6 +15,7 @@ import (
 )
 
 type RedisStats struct {
+	//储存了集群中Redis服务器的各种信息和统计数值，详见redis的info命令
 	Stats map[string]string `json:"stats,omitempty"`
 	Error *rpc.RemoteError  `json:"error,omitempty"`
 
@@ -46,10 +47,14 @@ func (s *Topom) newRedisStats(addr string, timeout time.Duration, do func(addr s
 	}
 }
 
-// 刷新redis状态
+// 刷新redis状态，启动dashboard的时候会执行
+// 1、更新 redis-server 下的 state 信息
+// 2、更新 redis-server 服务器以及主从关系
+// todo 待完善
 func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	//从缓存中读出slots，group，proxy，sentinel等信息封装在context struct中
 	ctx, err := s.newContext()
 	if err != nil {
 		return nil, err
@@ -60,12 +65,17 @@ func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) 
 		go func() {
 			stats := s.newRedisStats(addr, timeout, do)
 			stats.UnixTime = time.Now().Unix()
+			//vmap中添加键为addr，值为RedisStats的map
 			fut.Done(addr, stats)
 		}()
 	}
-	for _, g := range ctx.group {
+	//遍历ctx中的group，再遍历每个group中的Server
+	//每个Group除了id，还有一个属性就是GroupServer。每个GroupServer有自己的地址、数据中心、action等等
+	for _, g := range ctx.group { // groupID -> group
 		for _, x := range g.Servers {
 			goStats(x.Addr, func(addr string) (*RedisStats, error) {
+				//这个是从stats的pool中根据Server的地址从pool中取redis client，如果没有client，就创建
+				//然后加入到pool里面，并通过Info命令获取详细信息。整个流程和下面的sentinel类似，这里就不放具体的方法实现了
 				m, err := s.stats.redisp.InfoFull(addr)
 				if err != nil {
 					return nil, err

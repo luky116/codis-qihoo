@@ -178,6 +178,7 @@ func (c *Client) InfoKeySpace() (map[int]string, error) {
 	return info, nil
 }
 
+// todo 获取实际值
 func (c *Client) InfoFull() (map[string]string, error) {
 	if info, err := c.Info(); err != nil {
 		return nil, errors.Trace(err)

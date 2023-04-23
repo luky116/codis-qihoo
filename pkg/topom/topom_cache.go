@@ -48,6 +48,7 @@ func (s *Topom) dirtyCacheAll() {
 	})
 }
 
+// 从 本地文件/ZK 中获取元数据，并重新填充topom.cache中的数据，并赋给context结构
 func (s *Topom) refillCache() error {
 	for i := s.cache.hooks.Len(); i != 0; i-- {
 		e := s.cache.hooks.Front()
@@ -89,6 +90,7 @@ func (s *Topom) refillCacheSlots(slots []*models.SlotMapping) ([]*models.SlotMap
 		if slots[i] != nil {
 			continue
 		}
+		//如果slots[i]为空，就从store中取出对应的SlotMapping并赋值给cache中的这个slot
 		m, err := s.store.LoadSlotMapping(i, false)
 		if err != nil {
 			return nil, err
@@ -96,6 +98,7 @@ func (s *Topom) refillCacheSlots(slots []*models.SlotMapping) ([]*models.SlotMap
 		if m != nil {
 			slots[i] = m
 		} else {
+			//如果store中取出的对应的SlotMapping也为空，就新建一个SlotMapping赋值给当前slot
 			slots[i] = &models.SlotMapping{Id: i}
 		}
 	}
