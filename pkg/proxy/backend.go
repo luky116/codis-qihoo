@@ -369,10 +369,10 @@ func (bc *BackendConn) loopWriter(round int) (err error) {
 			continue
 		}
 		//将请求编码并且发送到codis server
-
 		if err := p.EncodeMultiBulk(r.Multi); err != nil {
 			return bc.setResponse(r, nil, fmt.Errorf("backend conn failure, %s", err))
 		}
+		// 将请求推送给redis-server执行
 		if err := p.Flush(len(bc.input) == 0); err != nil {
 			return bc.setResponse(r, nil, fmt.Errorf("backend conn failure, %s", err))
 		} else {

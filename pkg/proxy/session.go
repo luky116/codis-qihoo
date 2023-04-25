@@ -116,7 +116,6 @@ func (s *Session) Start(d *Router) {
 	// start 说明一个 session 只需要开启一个协程
 	s.start.Do(func() {
 		//默认最大session数1000
-		// todo 啥时候回出现过多的clients？？？？？
 		if int(incrSessions()) > s.config.ProxyMaxClients {
 			go func() {
 				s.Conn.Encode(redis.NewErrorf("ERR max number of clients reached"), true)

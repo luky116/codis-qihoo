@@ -19,6 +19,14 @@ type Request struct {
 	Broken *atomic2.Bool
 
 	OpStr string //输入指令，比如 GET、SET
+	/**
+	const (
+		FlagWrite = 1 << iota
+		FlagMasterOnly
+		FlagMayWrite
+		FlagNotAllow
+	)
+	*/
 	OpFlag
 
 	Database int32 //数据库编号
