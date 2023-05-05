@@ -48,8 +48,7 @@ func (s *Topom) newRedisStats(addr string, timeout time.Duration, do func(addr s
 }
 
 // 刷新redis状态，启动dashboard的时候会执行
-// 1、更新 redis-server 下的 state 信息
-// 2、更新 redis-server 服务器以及主从关系
+// 更新 sentinel 监控的所有group的master和slave节点信息
 // todo 待完善
 func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) {
 	s.mu.Lock()
@@ -135,8 +134,10 @@ func (s *Topom) newProxyStats(p *models.Proxy, timeout time.Duration) *ProxyStat
 
 	go func() {
 		defer close(ch)
+		// 远程调用 peoxy 的接口，查询 proxy 的状态
 		x, err := s.newProxyClient(p).StatsSimple()
 		if err != nil {
+			log.Errorf("newProxyStats error %v", err)
 			stats.Error = rpc.NewRemoteError(err)
 		} else {
 			stats.Stats = x
@@ -146,7 +147,7 @@ func (s *Topom) newProxyStats(p *models.Proxy, timeout time.Duration) *ProxyStat
 	select {
 	case <-ch:
 		return stats
-	case <-time.After(timeout):
+	case <-time.After(timeout * 20):
 		return &ProxyStats{Timeout: true}
 	}
 }

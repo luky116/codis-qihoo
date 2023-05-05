@@ -52,24 +52,48 @@ func (s *Topom) OnlineProxy(addr string) error {
 		return err
 	}
 
+	// 配置中心proxy路径下的文件
+	/**
+	{
+	    "id": 1,
+	    "token": "9cad0f626c77b14740922be2b0a152b7",
+	    "start_time": "2023-04-25 23:02:24.857297 +0800 CST m=+0.019739280",
+	    "admin_addr": "sanyuedeMacBook-Pro.local:11080",
+	    "proto_type": "tcp4",
+	    "proxy_addr": "sanyuedeMacBook-Pro.local:19000",
+	    "product_name": "codis-demo",
+	    "pid": 3899,
+	    "pwd": "/Users/sanyue/go/src/github.com/CodisLabs/codis",
+	    "sys": "Darwin sanyuedeMacBook-Pro.local 22.3.0 Darwin Kernel Version 22.3.0: Mon Jan 30 20:42:11 PST 2023; root:xnu-8792.81.3~2/RELEASE_X86_64 x86_64",
+	    "hostname": "sanyuedeMacBook-Pro.local",
+	    "datacenter": ""
+	}
+	*/
 	p, err := proxy.NewApiClient(addr).Model()
 	if err != nil {
 		return errors.Errorf("proxy@%s fetch model failed", addr)
 	}
+
+	//这个ApiClient中存储了proxy的地址，以及根据productName,productAuth(默认为空)以及token生成的auth
 	c := s.newProxyClient(p)
 
+	// proxy启动的时候，在s.setup(config)这一步，会生成一个xauth，存储在Proxy的xauth属性中，
+	// 这一步就是讲上面得到的xauth和启动proxy时的xauth作比较，来唯一确定需要的xauth
 	if err := c.XPing(); err != nil {
 		return errors.Errorf("proxy@%s check xauth failed", addr)
 	}
 	defer s.dirtyProxyCache(p.Token)
 
+	//检查上下文中的proxy是否已经有token，如果有的话，说明这个proxy已经添加到集群了
 	if d := ctx.proxy[p.Token]; d != nil {
 		p.Id = d.Id
 		if err := s.storeUpdateProxy(p); err != nil {
 			return err
 		}
 	} else {
+		//上下文中所有proxy的最大id+1，赋给当前的proxy作为其id
 		p.Id = ctx.maxProxyId() + 1
+		//到这一步，proxy已经添加成功，更新"/codis3/codis-wujiang/proxy/proxy-token"下面的proxy信息
 		if err := s.storeCreateProxy(p); err != nil {
 			return err
 		}
@@ -127,6 +151,7 @@ func (s *Topom) newProxyClient(p *models.Proxy) *proxy.ApiClient {
 
 func (s *Topom) reinitProxy(ctx *context, p *models.Proxy, c *proxy.ApiClient) error {
 	log.Warnf("proxy-[%s] reinit:\n%s", p.Token, p.Encode())
+	//初始化1024个槽
 	if err := c.FillSlots(ctx.toSlotSlice(ctx.slots, p)...); err != nil {
 		log.ErrorErrorf(err, "proxy-[%s] fillslots failed", p.Token)
 		return errors.Errorf("proxy-[%s] fillslots failed", p.Token)
@@ -135,6 +160,7 @@ func (s *Topom) reinitProxy(ctx *context, p *models.Proxy, c *proxy.ApiClient) e
 		log.ErrorErrorf(err, "proxy-[%s] start failed", p.Token)
 		return errors.Errorf("proxy-[%s] start failed", p.Token)
 	}
+	//由于此时sentinels还没有，传入的server队列为空，所以这个方法我们暂时可以不管
 	if err := c.SetSentinels(ctx.sentinel); err != nil {
 		log.ErrorErrorf(err, "proxy-[%s] set sentinels failed", p.Token)
 		return errors.Errorf("proxy-[%s] set sentinels failed", p.Token)

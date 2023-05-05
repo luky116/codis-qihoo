@@ -182,7 +182,7 @@ func (bc *BackendConn) newBackendReader(round int, config *Config) (*redis.Conn,
 	}
 
 	tasks := make(chan *Request, config.BackendMaxPipeline)
-	go bc.loopReader(tasks, c, round) // 将task转发到redis中去执行
+	go bc.loopReader(tasks, c, round)
 
 	return c, tasks, nil
 }

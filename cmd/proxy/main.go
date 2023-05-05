@@ -62,11 +62,11 @@ Options:
 	}
 
 	if s, ok := utils.Argument(d, "--log"); ok {
-		w, err := log.NewRollingFile(s, log.DailyRolling)
+		//w, err := log.NewRollingFile(s, log.DailyRolling)
 		if err != nil {
 			log.PanicErrorf(err, "open log file %s failed", s)
 		} else {
-			log.StdLog = log.New(w, "")
+			//log.StdLog = log.New(w, "")
 		}
 	}
 	log.SetLevel(log.LevelInfo)

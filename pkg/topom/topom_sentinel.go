@@ -37,6 +37,7 @@ func (s *Topom) AddSentinel(addr string) error {
 	if err := sentinel.FlushConfig(addr, s.config.SentinelClientTimeout.Duration()); err != nil {
 		return err
 	}
+
 	defer s.dirtySentinelCache()
 
 	p.Servers = append(p.Servers, addr)
@@ -188,10 +189,12 @@ func (s *Topom) ResyncSentinels() error {
 	if err != nil {
 		return err
 	}
+	// 删除缓存，以便下次从配置中心重新获取
 	defer s.dirtySentinelCache()
 
 	p := ctx.sentinel
 	p.OutOfSync = true
+	//更新zk的配置，OutOfSync 改为true
 	if err := s.storeUpdateSentinel(p); err != nil {
 		return err
 	}
@@ -206,11 +209,11 @@ func (s *Topom) ResyncSentinels() error {
 	}
 
 	sentinel := redis.NewSentinel(s.config.ProductName, s.config.ProductAuth)
-	// 让每个sentinel放弃之前的监听
+	// 让每个sentinel放弃之前监听的master节点
 	if err := sentinel.RemoveGroupsAll(p.Servers, s.config.SentinelClientTimeout.Duration()); err != nil {
 		log.WarnErrorf(err, "remove sentinels failed")
 	}
-	// 设置sentinel监听所有的Group
+	// 重新设置sentinel监听所有的Group的master节点
 	if err := sentinel.MonitorGroups(p.Servers, s.config.SentinelClientTimeout.Duration(), config, ctx.getGroupMasters()); err != nil {
 		log.WarnErrorf(err, "resync sentinels failed")
 		return err
@@ -222,7 +225,7 @@ func (s *Topom) ResyncSentinels() error {
 	for _, p := range ctx.proxy {
 		fut.Add()
 		go func(p *models.Proxy) {
-			//通知Proxy更新
+			//通知Proxy更新sentinel信息
 			err := s.newProxyClient(p).SetSentinels(ctx.sentinel)
 			if err != nil {
 				log.ErrorErrorf(err, "proxy-[%s] resync sentinel failed", p.Token)

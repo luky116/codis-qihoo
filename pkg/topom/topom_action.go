@@ -18,22 +18,27 @@ import (
 func (s *Topom) ProcessSlotAction() error {
 	for s.IsOnline() {
 		var (
+			// 标记该 slot 已经被执行过迁移
+			// marks里面保存的是:已经分配了group,或者即将分配group,这2种group id
 			marks = make(map[int]bool)
+			// 即将要做迁移放入slot id
 			plans = make(map[int]bool)
 		)
+		// 如果执行了 update，那么 marks 里面就会有值，
+		// 也就是说，一个slot只会被执行一次update，确保一个slot只会被迁移一次
+		// 如果m的即将分配group id在marks里面, accept(m)就返回false, 这样就保证了同时只有一个slot迁入到同一个group下, 在一个redis下面,同时只有一个slot被迁移出去
 		var accept = func(m *models.SlotMapping) bool {
-			// todo 为啥组ID存在就跳过呢？
 			if marks[m.GroupId] || marks[m.Action.TargetId] {
 				return false
 			}
-			if plans[m.Id] { //slot维度迁移，所以不能并行处理
+			if plans[m.Id] {
 				return false
 			}
 			return true
 		}
-		// 迁移完成，则将组ID标记为true
-		// todo 迁移完一个slot，为啥要把整个组标记呢？
+		//对plans和marks进行初始化
 		var update = func(m *models.SlotMapping) bool {
+			//只有在槽当前的GroupId为0的时候，marks[m.GroupId]才是false
 			if m.GroupId != 0 {
 				marks[m.GroupId] = true
 			}
@@ -41,10 +46,12 @@ func (s *Topom) ProcessSlotAction() error {
 			plans[m.Id] = true
 			return true
 		}
+		//按照默认的配置文件，这个值是100，并行迁移的slot数量，是一个阀值
 		var parallel = math2.MaxInt(1, s.config.MigrationParallelSlots) // 并行迁移协程数量
-		// 并行进行迁移
+		// 往plans里面添加记录，直到plans的size等于parallel
+		// 这样配合后面的 for plans，就能达到约定的并行度
 		for parallel > len(plans) {
-			//状态转移在这里完成
+			// 更改zk中slot的状态，并通知proxy进行更改
 			_, ok, err := s.SlotActionPrepareFilter(accept, update)
 			if err != nil {
 				return err
@@ -60,7 +67,7 @@ func (s *Topom) ProcessSlotAction() error {
 			fut.Add()
 			go func(sid int) {
 				log.Warnf("slot-[%d] process action", sid)
-				//重点，真正的数据迁移
+				// 对上面修改状态的slot进行迁移
 				var err = s.processSlotAction(sid)
 				if err != nil {
 					status := fmt.Sprintf("[ERROR] Slot[%04d]: %s", sid, err)

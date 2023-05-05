@@ -124,38 +124,40 @@ func (s *Topom) SlotCreateActionRange(beg, end int, gid int, must bool) error {
 	var pending []int
 	for sid := beg; sid <= end; sid++ {
 		// 获取slot
-		m, err := ctx.getSlotMapping(sid)
+		slot, err := ctx.getSlotMapping(sid)
 		if err != nil {
 			return err
 		}
-		if m.Action.State != models.ActionNothing {
+		// 如果 slot 的状态异常
+		if slot.Action.State != models.ActionNothing {
 			if !must {
 				continue
 			}
 			return errors.Errorf("slot-[%d] action already exists", sid)
 		}
-		if m.GroupId == g.Id {
+		// slot 已经在 group 了，所以直接返回
+		if slot.GroupId == g.Id {
 			if !must {
 				continue
 			}
 			return errors.Errorf("slot-[%d] already in group-[%d]", sid, g.Id)
 		}
-		pending = append(pending, m.Id)
+		pending = append(pending, slot.Id)
 	}
 
 	for _, sid := range pending {
-		m, err := ctx.getSlotMapping(sid)
+		slot, err := ctx.getSlotMapping(sid)
 		if err != nil {
 			return err
 		}
-		defer s.dirtySlotsCache(m.Id)
+		defer s.dirtySlotsCache(slot.Id)
 
-		m.Action.State = models.ActionPending
+		slot.Action.State = models.ActionPending
 		// 当前正在操作的最大index
-		m.Action.Index = ctx.maxSlotActionIndex() + 1
-		m.Action.TargetId = g.Id
-		// 更新file或是ZK存储
-		if err := s.storeUpdateSlotMapping(m); err != nil {
+		slot.Action.Index = ctx.maxSlotActionIndex() + 1
+		slot.Action.TargetId = g.Id
+		// 更新元数据配置中该slot的状态为pending
+		if err := s.storeUpdateSlotMapping(slot); err != nil {
 			return err
 		}
 	}
@@ -206,12 +208,13 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 			if m.Action.State == models.ActionNothing {
 				continue
 			}
-			if m.Action.State != models.ActionPending {
+			if filter(m) {
 				//if filter(m) {
 				//从最小的开始执行
 				if picked != nil && picked.Action.Index < m.Action.Index {
 					continue
 				}
+				//只有一个slot没有执行过update方法，accept才会返回true；也就是说，即一个slot只会被处理一次
 				if accept == nil || accept(m) {
 					picked = m
 				}
@@ -221,7 +224,10 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 	}
 
 	var m = func() *models.SlotMapping {
-		// 优先执行非apending的数据
+		// 取出 m.Action.State != "" and m.Action.State != pending 的slot里面action.id最小的那个slot
+		// 即: 取出正在做slot迁移的slot里面action.id最小的那个slot
+		// 赋值给picked
+		// 然后返回
 		var picked = minActionIndex(func(m *models.SlotMapping) bool {
 			return m.Action.State != models.ActionPending
 		})
@@ -231,7 +237,10 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 		if s.action.disabled.IsTrue() {
 			return nil
 		}
-		// 再执行apending的数据的迁移
+		// 取出 m.Action.State != "" and m.Action.State == models.ActionPending的slot里面action.id最小的那个slot
+		// 即: 取出pending状态的slot里面action.id最小的那个slot
+		// 赋值给picked
+		// 然后返回
 		return minActionIndex(func(m *models.SlotMapping) bool {
 			return m.Action.State == models.ActionPending
 		})
@@ -247,6 +256,8 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 
 	log.Warnf("slot-[%d] action prepare:\n%s", m.Id, m.Encode())
 
+	//变更每个SlotMapping的action.state,并与zk交互
+	//另外,Action.state符合preparing或者prepared的时候,要将SlotMapping同步到proxy
 	switch m.Action.State {
 
 	case models.ActionPending:
@@ -269,6 +280,7 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 		// 改状态为已准备迁移
 		m.Action.State = models.ActionPrepared
 		// 通过Proxy重连新的Redis Server并且设置slot从哪迁移等信息
+		// 将slotMapping信息刷新到proxy中, 如果刷失败了, 将m.Action.State改回ActionPreparing, 返回
 		if err := s.resyncSlotMappings(ctx, m); err != nil {
 			log.Warnf("slot-[%d] resync-rollback to preparing", m.Id)
 			m.Action.State = models.ActionPreparing
@@ -276,6 +288,7 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 			log.Warnf("slot-[%d] resync-rollback to preparing, done", m.Id)
 			return 0, false, err
 		}
+		// 刷新proxy信息成功后, 将m.Action.State = models.ActionPrepared写入到zk中
 		if err := s.storeUpdateSlotMapping(m); err != nil {
 			return 0, false, err
 		}
@@ -288,6 +301,7 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 
 		log.Warnf("slot-[%d] resync to migrating", m.Id)
 
+		// 将action state状态改成 ActionMigrating
 		m.Action.State = models.ActionMigrating
 		if err := s.resyncSlotMappings(ctx, m); err != nil {
 			log.Warnf("slot-[%d] resync to migrating failed", m.Id)
@@ -386,9 +400,11 @@ func (s *Topom) newSlotActionExecutor(sid int) (func(db int) (remains int, nextd
 		if s.action.disabled.IsTrue() {
 			return nil, nil
 		}
+		// m.groupId 主从在切换时, 不做slot迁移操作
 		if ctx.isGroupPromoting(m.GroupId) {
 			return nil, nil
 		}
+		// m.action.targetId 主从在切换时, 不做slot迁移操作
 		if ctx.isGroupPromoting(m.Action.TargetId) {
 			return nil, nil
 		}
@@ -403,10 +419,12 @@ func (s *Topom) newSlotActionExecutor(sid int) (func(db int) (remains int, nextd
 			if from == "" {
 				return 0, -1, nil
 			}
+			//从cache中得到group 1的redisClient,这个client由addr, auth, timeout，Database，redigo.Conn组成: 如果cache没有, 就新建
 			c, err := s.action.redisp.GetClient(from)
 			if err != nil {
 				return 0, -1, err
 			}
+			//将刚才新建的或者从cache中取出的redis client再put到Topom.action.redisp中
 			defer s.action.redisp.PutClient(c)
 
 			if err := c.Select(db); err != nil {
@@ -418,7 +436,7 @@ func (s *Topom) newSlotActionExecutor(sid int) (func(db int) (remains int, nextd
 			switch method {
 			case models.ForwardSync:
 				do = func() (int, error) {
-					// 实际迁移的逻辑
+					//调用redis的SLOTSMGRTTAGSLOT命令,随机选择当前slot的一个key,并将与这个key的tag相同的k-v全部迁移到目标机
 					return c.MigrateSlot(sid, dest)
 				}
 			case models.ForwardSemiAsync:
@@ -429,6 +447,7 @@ func (s *Topom) newSlotActionExecutor(sid int) (func(db int) (remains int, nextd
 					Timeout: math2.MinDuration(time.Second*5,
 						s.config.MigrationTimeout.Duration()),
 				}
+				//调用redis的SLOTSMGRTTAGSLOT-ASYNC命令,参数是target redis的ip和port
 				do = func() (int, error) {
 					return c.MigrateSlotAsync(sid, dest, option)
 				}
@@ -444,6 +463,7 @@ func (s *Topom) newSlotActionExecutor(sid int) (func(db int) (remains int, nextd
 			}
 
 			nextdb := -1
+			//通过info命令查keyspace信息并做处理,这里取出的m为空
 			m, err := c.InfoKeySpace()
 			if err != nil {
 				return 0, -1, err

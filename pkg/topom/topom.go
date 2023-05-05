@@ -30,7 +30,6 @@ type Topom struct {
 
 	xauth string
 	//初始化之后，这个属性中的信息可以在zk中看到，就像models.Proxy一样
-	//路径是/codis3/codis-wujiang/topom
 	model *models.Topom
 
 	//存储着zkClient（或是读取本地配置）以及product-name，Topom与zk交互都是通过这个store
@@ -51,7 +50,7 @@ type Topom struct {
 	exit struct {
 		C chan struct{}
 	}
-	//与dashboard相关的所有配置信息，比如：../codis/config/dashboard.toml
+
 	config *Config
 	online bool
 	closed bool
@@ -80,7 +79,8 @@ type Topom struct {
 	//存储集群中redis和proxy详细信息，goroutine每次刷新redis和proxy之后，都会将结果存在这里
 	stats struct {
 		//timeout为5秒
-		// todo 描述作用
+
+		//
 		redisp *redis.Pool
 
 		// redis-server
@@ -95,6 +95,7 @@ type Topom struct {
 		// todo 描述作用
 		redisp *redis.Pool
 
+		// ha 本质上是一个 sentinel
 		monitor *redis.Sentinel
 		// groupID -> master redis-server's host
 		masters map[int]string
@@ -228,7 +229,7 @@ func (s *Topom) Start(routines bool) error {
 	if !routines {
 		return nil
 	}
-	ctx, err := s.newContext()
+	ctx, err := s.newContext() // 如果元数据不完整，则从配置中心去加载
 	if err != nil {
 		return err
 	}
@@ -237,7 +238,7 @@ func (s *Topom) Start(routines bool) error {
 	go func() {
 		for !s.IsClosed() {
 			if s.IsOnline() {
-				// 刷新redis状态
+				// 更新 sentinel 监控的所有group的master和slave节点信息
 				w, _ := s.RefreshRedisStats(time.Second)
 				if w != nil {
 					w.Wait()

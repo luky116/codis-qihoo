@@ -68,7 +68,7 @@ type RequestChan struct {
 	lock sync.Mutex
 	cond *sync.Cond
 
-	data []*Request
+	data []*Request // 如果有response，往这里放
 	buff []*Request
 
 	waits  int

@@ -144,6 +144,7 @@ func (s *Sentinel) subscribeCommand(client *Client, sentinel string,
 		}
 		s.printf("sentinel-[%s] subscribe event %v", sentinel, message)
 
+		//从订阅的channel中读取消息
 		switch message[1] {
 		case "+switch-master":
 			if len(message) != 3 {
@@ -720,6 +721,7 @@ func (s *Sentinel) RemoveGroups(sentinels []string, timeout time.Duration, group
 	return last
 }
 
+// 将 sentinel 当前监控的 master 节点全部取消监听
 func (s *Sentinel) removeGroupsAllDispatch(ctx context.Context, sentinel string, timeout time.Duration) error {
 	var err = s.dispatch(ctx, sentinel, timeout, func(c *Client) error {
 		masters, err := s.mastersCommand(c)
