@@ -23,6 +23,7 @@ type Router struct {
 		primary *sharedBackendConnPool
 		replica *sharedBackendConnPool
 	}
+	// tableID -> slots
 	slots map[int][]Slot
 	table map[int]*models.Table
 
@@ -39,7 +40,7 @@ func NewRouter(config *Config) *Router {
 	s.slots = make(map[int][]Slot)
 	//	for i := range s.slots {
 	//		s.slots[i].id = i
-	//		s.slots[i].method = &forwardSync{}
+	s.slots[i].method = &forwardSync{}
 	//	}
 	return s
 }

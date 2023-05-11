@@ -166,6 +166,7 @@ func (d *forwardHelper) slotsmgrt(s *Slot, hkey []byte, database int, seed uint)
 	}
 }
 
+// 异步迁移 https://www.jianshu.com/p/07bc0483e56c
 func (d *forwardHelper) slotsmgrtExecWrapper(s *Slot, hkey []byte, database int, seed uint, multi []*redis.Resp) (_ *redis.Resp, moved bool, _ error) {
 	m := &Request{}
 	m.Multi = make([]*redis.Resp, 0, 2+len(multi))

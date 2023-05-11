@@ -59,9 +59,12 @@ func (s *Topom) CreateTable(name string, num, id int) error {
 	if err != nil {
 		return err
 	}
+	// 调用 pkcluster addtable 命令创建 table
+	// 为所有 group下的所有 codis-server 都创建一个 table
 	if _, err := s.createTableForPika(tid, num); err != nil {
 		return err
 	}
+	// 调用 pkcluster adslots 在该 table 上创建 slot
 	if _, err := s.PikaAddSlot(tid); err != nil {
 		return err
 	}
@@ -248,6 +251,7 @@ type SlotDistribution struct {
 	Done    bool `json:"Done"`
 }
 
+// 给每一个 group 均匀分配 slot
 func (s *Topom) allocateSlot(slotNum int) ([]*SlotDistribution, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -291,6 +295,7 @@ func (s *Topom) allocateSlot(slotNum int) ([]*SlotDistribution, error) {
 	return distribution, nil
 }
 
+// 获取 table 的最大 slot，将 slot 均匀分配到所有的 group
 func (s *Topom) CaculateDistribution(tid int) ([]*SlotDistribution, error) {
 	num, err := s.getSlotNum(tid)
 	if err != nil {
@@ -356,13 +361,16 @@ func (s *Topom) createTableForPika(tid, slotNum int) (map[string]*PikaResult, er
 }
 
 func (s *Topom) PikaAddSlot(tid int) (map[string]*PikaResult, error) {
+	// 获取 table 的最大 slot，将 slot 均匀分配到所有的 group
 	distribution, err := s.CaculateDistribution(tid)
 	if err != nil {
 		return nil, err
 	}
 	for _, d := range distribution {
 		log.Warnf("table-[%d] add slot beg-[%d] end[%d]for group-[%d]", tid, d.Begin, d.End, d.GroupId)
+		// pkcluster addslots 命令
 		command := s.stats.redisp.AddSlots(tid, d.Begin, d.End)
+		// 组下面的每个server都只创建指定范围内的slot
 		if results, err := s.pikaExecuteForGroup(time.Second*30, command, d.GroupId); err != nil {
 			return nil, err
 		} else if err = checkPikaResult(results); err != nil {
@@ -482,6 +490,7 @@ func (s *Topom) newPikaExecuter(addr string, timeout time.Duration, command func
 	}
 }
 
+// 为所有group下的所有 codis-server 都创建一个 table
 func (s *Topom) pikaExecuteForeach(timeout time.Duration, command func(addr string) error) (map[string]*PikaResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

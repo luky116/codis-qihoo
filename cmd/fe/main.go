@@ -77,15 +77,15 @@ Options:
 		return
 	}
 
-	if s, ok := utils.Argument(d, "--log"); ok {
-		w, err := log.NewRollingFile(s, log.DailyRolling)
-		if err != nil {
-			log.PanicErrorf(err, "open log file %s failed", s)
-		} else {
-			log.StdLog = log.New(w, "")
-		}
-	}
-	log.SetLevel(log.LevelInfo)
+	//if s, ok := utils.Argument(d, "--log"); ok {
+	//	w, err := log.NewRollingFile(s, log.DailyRolling)
+	//	if err != nil {
+	//		log.PanicErrorf(err, "open log file %s failed", s)
+	//	} else {
+	//		log.StdLog = log.New(w, "")
+	//	}
+	//}
+	log.SetLevel(log.LevelDebug)
 
 	if s, ok := utils.Argument(d, "--log-level"); ok {
 		if !log.SetLevelString(s) {

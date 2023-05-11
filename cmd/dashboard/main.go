@@ -54,15 +54,15 @@ Options:
 
 	}
 
-	if s, ok := utils.Argument(d, "--log"); ok {
-		w, err := log.NewRollingFile(s, log.DailyRolling)
-		if err != nil {
-			log.PanicErrorf(err, "open log file %s failed", s)
-		} else {
-			log.StdLog = log.New(w, "")
-		}
-	}
-	log.SetLevel(log.LevelInfo)
+	//if s, ok := utils.Argument(d, "--log"); ok {
+	//	w, err := log.NewRollingFile(s, log.DailyRolling)
+	//	if err != nil {
+	//		log.PanicErrorf(err, "open log file %s failed", s)
+	//	} else {
+	//		log.StdLog = log.New(w, "")
+	//	}
+	//}
+	log.SetLevel(log.LevelDebug)
 
 	if s, ok := utils.Argument(d, "--log-level"); ok {
 		if !log.SetLevelString(s) {
@@ -75,7 +75,7 @@ Options:
 	} else {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
-	log.Warnf("set ncpu = %d", runtime.GOMAXPROCS(0))
+	//log.Warnf("set ncpu = %d", runtime.GOMAXPROCS(0))
 
 	config := topom.NewDefaultConfig()
 	if s, ok := utils.Argument(d, "--config"); ok {

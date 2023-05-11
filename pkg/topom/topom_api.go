@@ -104,6 +104,7 @@ func newApiServer(t *Topom) http.Handler {
 			r.Get("/info/:addr", api.InfoServer)
 		})
 		r.Group("/table", func(r martini.Router) {
+			// 调用 pkcluster addtable 创建 table
 			r.Put("/create/:xauth/:name/:num/:tid", api.CreateTable)
 			r.Put("/createforMeta/:xauth/:name/:num/:tid", api.CreateTableForMeta)
 			r.Put("/createforPika/:xauth/:tid", api.CreateTableForPika)
