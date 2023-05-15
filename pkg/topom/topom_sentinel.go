@@ -162,7 +162,7 @@ func (s *Topom) rewatchSentinels(servers []string) {
 							log.WarnErrorf(err, "fetch group masters failed")
 						} else {
 							if !p.IsCanceled() {
-								//切主
+								// 更新配置中心的master和slave信息
 								s.SwitchMasters(masters)
 							}
 							success += 1

@@ -50,7 +50,6 @@ func (s *Topom) newRedisStats(addr string, timeout time.Duration, do func(addr s
 // 刷新redis状态，启动dashboard的时候会执行
 // 1、更新 redis-server 下的 state 信息
 // 2、更新 redis-server 服务器以及主从关系
-// todo 待完善
 func (s *Topom) RefreshRedisStats(timeout time.Duration) (*sync2.Future, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

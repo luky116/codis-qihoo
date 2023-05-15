@@ -132,6 +132,7 @@ func (ctx *context) toReplicaGroups(gid int, p *models.Proxy) [][]string {
 	switch {
 	case g == nil:
 		return nil
+		// 如果 group 在发生主从切换动作，group 的从节点直接置为空。即，proxy 只允许从master节点来处理请求
 	case g.Promoting.State != models.ActionNothing:
 		return nil
 	case len(g.Servers) <= 1:
@@ -217,7 +218,7 @@ func (ctx *context) maxSyncActionIndex() (maxIndex int) {
 	return maxIndex
 }
 
-// 获取最小的需要进行同步的 codis-serveer
+// 获取最小的需要进行同步的 codis-server（pendding）
 func (ctx *context) minSyncActionIndex() string {
 	var d *models.GroupServer
 	for _, g := range ctx.group {

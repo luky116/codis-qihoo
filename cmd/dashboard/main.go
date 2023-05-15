@@ -172,6 +172,7 @@ Options:
 	}()
 
 	for i := 0; !s.IsClosed() && !s.IsOnline(); i++ {
+		// 【【【【【【【【【【Start：核心方法】】】】】】】】
 		if err := s.Start(true); err != nil {
 			if i <= 15 {
 				log.Warnf("[%p] dashboard online failed [%d]", s, i)

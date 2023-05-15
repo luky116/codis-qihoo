@@ -111,6 +111,7 @@ func New(config *Config) (*Proxy, error) {
 }
 
 // 绑定 admin 和 proxy 的监听端口，但是没有加处理逻辑
+// 生成随机的 token
 func (s *Proxy) setup(config *Config) error {
 	proto := config.ProtoType                                      // tcp4
 	if l, err := net.Listen(proto, config.ProxyAddr); err != nil { // ProxyAddr=0.0.0.0:19000，19000 也是 server 服务的监听端口，Set bind address for proxy

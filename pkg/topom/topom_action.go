@@ -22,17 +22,17 @@ func (s *Topom) ProcessSlotAction() error {
 			plans = make(map[int]bool)
 		)
 		var accept = func(m *models.SlotMapping) bool {
-			// todo 为啥组ID存在就跳过呢？
+			// 一个group，同时只有一个slot迁移出去或一个slot迁移进来
 			if marks[m.GroupId] || marks[m.Action.TargetId] {
 				return false
 			}
+			// slot即将处理，无需再次添加
 			if plans[m.Id] { //slot维度迁移，所以不能并行处理
 				return false
 			}
 			return true
 		}
-		// 迁移完成，则将组ID标记为true
-		// todo 迁移完一个slot，为啥要把整个组标记呢？
+		// 标记group或是目标group在处理中
 		var update = func(m *models.SlotMapping) bool {
 			if m.GroupId != 0 {
 				marks[m.GroupId] = true
@@ -41,7 +41,8 @@ func (s *Topom) ProcessSlotAction() error {
 			plans[m.Id] = true
 			return true
 		}
-		var parallel = math2.MaxInt(1, s.config.MigrationParallelSlots) // 并行迁移协程数量
+		// 并行迁移协程数量，用户通过配置文件指定
+		var parallel = math2.MaxInt(1, s.config.MigrationParallelSlots)
 		// 并行进行迁移
 		for parallel > len(plans) {
 			//状态转移在这里完成

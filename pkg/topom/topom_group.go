@@ -159,16 +159,20 @@ func (s *Topom) GroupDelServer(gid int, addr string) error {
 		return err
 	}
 
+	// 如果 group 正在被迁移，则直接跳过
 	if g.Promoting.State != models.ActionNothing {
 		return errors.Errorf("group-[%d] is promoting", g.Id)
 	}
 
+	// master节点不能被删除
 	if index == 0 {
 		if len(g.Servers) != 1 || ctx.isGroupInUse(g.Id) {
 			return errors.Errorf("group-[%d] can't remove master, still in use", g.Id)
 		}
 	}
 
+	// 将sentinel的OutOfSync改为true
+	// todo 为啥要改这个啊？
 	if p := ctx.sentinel; len(p.Servers) != 0 {
 		defer s.dirtySentinelCache()
 		p.OutOfSync = true
@@ -178,6 +182,7 @@ func (s *Topom) GroupDelServer(gid int, addr string) error {
 	}
 	defer s.dirtyGroupCache(g.Id)
 
+	// 将group的OutOfSync改为true
 	if index != 0 && g.Servers[index].ReplicaGroup {
 		g.OutOfSync = true
 	}
@@ -188,12 +193,14 @@ func (s *Topom) GroupDelServer(gid int, addr string) error {
 			slice = append(slice, x)
 		}
 	}
+	// todo 为啥是false
 	if len(slice) == 0 {
 		g.OutOfSync = false
 	}
 
 	g.Servers = slice
 
+	// 更新group的元数据配置信息
 	return s.storeUpdateGroup(g)
 }
 
@@ -209,11 +216,13 @@ func (s *Topom) GroupPromoteServer(gid int, addr string) error {
 	if err != nil {
 		return err
 	}
+	// index：server 在 group 中的位置序号
 	index, err := ctx.getGroupIndex(g, addr)
 	if err != nil {
 		return err
 	}
 
+	// 一个 group 同时只可以进行一个 slave->master 的动作
 	if g.Promoting.State != models.ActionNothing {
 		if index != g.Promoting.Index {
 			return errors.Errorf("group-[%d] is promoting index = %d", g.Id, g.Promoting.Index)
@@ -223,6 +232,7 @@ func (s *Topom) GroupPromoteServer(gid int, addr string) error {
 			return errors.Errorf("group-[%d] can't promote master", g.Id)
 		}
 	}
+	// 如果当前有slot迁移，不能进行主从切换
 	if n := s.action.executor.Int64(); n != 0 {
 		return errors.Errorf("slots-migration is running = %d", n)
 	}
@@ -252,6 +262,7 @@ func (s *Topom) GroupPromoteServer(gid int, addr string) error {
 		slots := ctx.getSlotMappingsByGroupId(g.Id)
 
 		g.Promoting.State = models.ActionPrepared
+		// resyncSlotMappings 会把 proxy 的slave节点置为空，只允许master节点处理请求
 		if err := s.resyncSlotMappings(ctx, slots...); err != nil {
 			log.Warnf("group-[%d] resync-rollback to preparing", g.Id)
 			g.Promoting.State = models.ActionPreparing
@@ -274,6 +285,7 @@ func (s *Topom) GroupPromoteServer(gid int, addr string) error {
 				return err
 			}
 			groupIds := map[int]bool{g.Id: true}
+			// sentinel取消对当前group的主从切换事件的监听
 			sentinel := redis.NewSentinel(s.config.ProductName, s.config.ProductAuth)
 			if err := sentinel.RemoveGroups(p.Servers, s.config.SentinelClientTimeout.Duration(), groupIds); err != nil {
 				log.WarnErrorf(err, "group-[%d] remove sentinels failed", g.Id)
@@ -302,6 +314,7 @@ func (s *Topom) GroupPromoteServer(gid int, addr string) error {
 
 		g.Servers = slice
 		g.Promoting.Index = 0
+		// todo 为啥这里先更新为finished？
 		g.Promoting.State = models.ActionFinished
 		if err := s.storeUpdateGroup(g); err != nil {
 			return err
@@ -325,12 +338,14 @@ func (s *Topom) GroupPromoteServer(gid int, addr string) error {
 
 		slots := ctx.getSlotMappingsByGroupId(g.Id)
 
+		// 跟新proxy节点的master信息（slave节点仍旧为空）
 		if err := s.resyncSlotMappings(ctx, slots...); err != nil {
 			log.Warnf("group-[%d] resync to finished failed", g.Id)
 			return err
 		}
 		defer s.dirtyGroupCache(g.Id)
 
+		// 状态更新为 noting
 		g = &models.Group{
 			Id:      g.Id,
 			Servers: g.Servers,
@@ -512,7 +527,8 @@ func (s *Topom) SyncActionPrepare() (string, error) {
 		return "", err
 	}
 
-	// 获取最小的待同步的 codis-server 的 addr，挨个进行处理
+	//获取最小的需要进行同步的 codis-server（pendding）
+	// todo：如果这里的状态为 syncing，怎么进行重试呢？
 	addr := ctx.minSyncActionIndex()
 	if addr == "" {
 		return "", nil
@@ -523,7 +539,7 @@ func (s *Topom) SyncActionPrepare() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// ActionNothing 说明该 group 空闲，可以从主服务器同步数据
+	// ActionNothing 说明该 group 状态可用，可以从主服务器同步数据
 	if g.Promoting.State != models.ActionNothing {
 		return "", nil
 	}
@@ -553,6 +569,7 @@ func (s *Topom) SyncActionComplete(addr string, failed bool) error {
 	if err != nil {
 		return nil
 	}
+	// 如果 group 正在进行 slave->master 的切换，直接退出
 	if g.Promoting.State != models.ActionNothing {
 		return nil
 	}
@@ -570,6 +587,7 @@ func (s *Topom) SyncActionComplete(addr string, failed bool) error {
 	} else {
 		state = "synced_failed"
 	}
+	// 修改 groupServer 的状态
 	g.Servers[index].Action.State = state
 	return s.storeUpdateGroup(g)
 }
@@ -602,6 +620,7 @@ func (s *Topom) newSyncActionExecutor(addr string) (func() error, error) {
 			return err
 		}
 		defer c.Close()
+		// 执行 slaveof no one，将slave节点提升为master节点
 		if err := c.SetMaster(master); err != nil {
 			log.WarnErrorf(err, "redis %s set master to %s failed", addr, master)
 			return err

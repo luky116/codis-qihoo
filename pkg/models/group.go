@@ -10,7 +10,8 @@ type Group struct {
 	Servers []*GroupServer `json:"servers"`
 
 	Promoting struct {
-		Index int    `json:"index,omitempty"`
+		Index int `json:"index,omitempty"`
+		// 如果 server 发生了手动 主->从，或是 从->主 的动作，State会变为pendding
 		State string `json:"state,omitempty"`
 	} `json:"promoting"`
 

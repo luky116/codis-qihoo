@@ -92,6 +92,7 @@ func newApiServer(t *Topom) http.Handler {
 			r.Put("/add/:xauth/:gid/:addr", api.GroupAddServer)
 			r.Put("/add/:xauth/:gid/:addr/:datacenter", api.GroupAddServer)
 			r.Put("/del/:xauth/:gid/:addr", api.GroupDelServer)
+			// slave 节点升级 master 节点
 			r.Put("/promote/:xauth/:gid/:addr", api.GroupPromoteServer)
 			r.Put("/replica-groups/:xauth/:gid/:addr/:value", api.EnableReplicaGroups)
 			r.Put("/replica-groups-all/:xauth/:value", api.EnableReplicaGroupsAll)
@@ -384,6 +385,7 @@ func (s *apiServer) GroupAddServer(params martini.Params) (int, string) {
 	}
 }
 
+// 移除group下的一个server节点
 func (s *apiServer) GroupDelServer(params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)

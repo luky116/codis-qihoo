@@ -44,6 +44,10 @@ func (s *Topom) CreateProxy(addr string) error {
 	}
 }
 
+// 0、检查proxy是否在线
+// 1、校验proxy的权限是否正常
+// 2、更新zk中proxy的信息
+// 3、触发proxy侧更新slot信息，并把online状态改为true，以处理用户的请求
 func (s *Topom) OnlineProxy(addr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

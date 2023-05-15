@@ -68,6 +68,7 @@ type Topom struct {
 		redisp *redis.Pool
 
 		interval atomic2.Int64
+		// 通过FE设置，该slot无法编辑
 		disabled atomic2.Bool
 
 		progress struct {
@@ -114,6 +115,7 @@ func New(client models.Client, config *Config) (*Topom, error) {
 	s := &Topom{}
 	s.config = config
 	s.exit.C = make(chan struct{})
+	// pool 会自动启动一个协程，每分钟清理失效的client
 	s.action.redisp = redis.NewPool(config.ProductAuth, config.MigrationTimeout.Duration())
 	s.action.progress.status.Store("")
 
@@ -160,6 +162,7 @@ func (s *Topom) setup(config *Config) error {
 	} else {
 		s.ladmin = l
 
+		// todo 待确认这里是干嘛用的？
 		x, err := utils.ReplaceUnspecifiedIP("tcp", l.Addr().String(), s.config.HostAdmin)
 		if err != nil {
 			return err
@@ -237,7 +240,9 @@ func (s *Topom) Start(routines bool) error {
 	go func() {
 		for !s.IsClosed() {
 			if s.IsOnline() {
-				// 刷新redis状态
+				// 刷新redis状态，启动dashboard的时候会执行
+				// 1、更新 redis-server 下的 state 信息
+				// 2、更新 redis-server 服务器以及主从关系
 				w, _ := s.RefreshRedisStats(time.Second)
 				if w != nil {
 					w.Wait()
@@ -276,7 +281,7 @@ func (s *Topom) Start(routines bool) error {
 	go func() {
 		for !s.IsClosed() {
 			if s.IsOnline() {
-				//处理同步操作
+				//处理group中，server 由 slave 升级 master 的操作
 				if err := s.ProcessSyncAction(); err != nil {
 					log.WarnErrorf(err, "process sync action failed")
 					time.Sleep(time.Second * 5)

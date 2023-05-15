@@ -193,6 +193,7 @@ func (s *Topom) SlotActionPrepare() (int, bool, error) {
 	return s.SlotActionPrepareFilter(nil, nil)
 }
 
+//从最小的开始执行
 func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMapping) bool) (int, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -206,9 +207,7 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 			if m.Action.State == models.ActionNothing {
 				continue
 			}
-			if m.Action.State != models.ActionPending {
-				//if filter(m) {
-				//从最小的开始执行
+			if filter(m) {
 				if picked != nil && picked.Action.Index < m.Action.Index {
 					continue
 				}
@@ -221,7 +220,7 @@ func (s *Topom) SlotActionPrepareFilter(accept, update func(m *models.SlotMappin
 	}
 
 	var m = func() *models.SlotMapping {
-		// 优先执行非apending的数据
+		// 优先执行 pending 之后状态的数据（即，上次处理了一半的数据，此次接着处理）
 		var picked = minActionIndex(func(m *models.SlotMapping) bool {
 			return m.Action.State != models.ActionPending
 		})
