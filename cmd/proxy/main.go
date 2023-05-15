@@ -233,6 +233,7 @@ Options:
 		go AutoOnlineWithFillSlots(s, slots)
 	}
 
+	// 这里等到dashboard来触发online=true的调用（等待dashboard通知proxy更新slots信息，然后proxy才处于可服务的状态）
 	for !s.IsClosed() && !s.IsOnline() {
 		log.Warnf("[%p] proxy waiting online ...", s)
 		time.Sleep(time.Second)

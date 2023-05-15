@@ -41,6 +41,7 @@ func (d *forwardSync) Forward(s *Slot, r *Request, hkey []byte) error {
 		return err
 	}
 	//使session中的loopWriter会在Batch处等待，处理后返回。
+	// BackendConn会有一个协程轮训处理
 	bc.PushBack(r)
 	return nil
 }
@@ -60,6 +61,7 @@ func (d *forwardSync) process(s *Slot, r *Request, hkey []byte) (*BackendConn, e
 	}
 	r.Group = &s.refs
 	r.Group.Add(1)
+	// 这里只是返回一个codis-server的db的链接而已
 	return d.forward2(s, r), nil
 }
 

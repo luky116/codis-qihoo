@@ -15,6 +15,8 @@ type Slot struct {
 		hold bool
 		sync.RWMutex
 	}
+	// 标记该slot上有未处理的请求
+	// 确保更新slot信息的时候，该slot上的请求都处理完成
 	refs sync.WaitGroup
 
 	switched bool

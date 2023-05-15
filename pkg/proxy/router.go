@@ -168,6 +168,7 @@ func (s *Router) dispatchAddr(r *Request, addr string) bool {
 
 func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 	slot := &s.slots[m.Id]
+	// 确保更新slot信息的时候，该slot上的请求都处理完成
 	slot.blockAndWait()
 
 	// 关闭客户端通信的链接

@@ -418,6 +418,7 @@ func (s *Proxy) serveProxy() {
 		}()
 		for {
 			// 接收accept请求。对于client的每个连接，只会打开一个Session
+			// 这里会产生阻塞
 			c, err := s.acceptConn(l)
 			if err != nil {
 				return err

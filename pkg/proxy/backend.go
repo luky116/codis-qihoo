@@ -504,6 +504,7 @@ func (s *sharedBackendConn) BackendConn(database int32, seed uint, must bool) *B
 	if !must {
 		return nil
 	}
+	// 直接使用master的链接
 	return parallel[0]
 }
 

@@ -115,8 +115,8 @@ var RespOK = redis.NewString([]byte("OK"))
 func (s *Session) Start(d *Router) {
 	// start 说明一个 session 只需要开启一个协程
 	s.start.Do(func() {
-		//默认最大session数1000
-		// todo 啥时候回出现过多的clients？？？？？
+		// 默认最大session数1000
+		// 啥时候回出现过多的clients？？？？？：当client请求处理太慢，就会导致请求挤压
 		if int(incrSessions()) > s.config.ProxyMaxClients {
 			go func() {
 				s.Conn.Encode(redis.NewErrorf("ERR max number of clients reached"), true)
@@ -128,7 +128,7 @@ func (s *Session) Start(d *Router) {
 			return
 		}
 
-		// todo 不在线是什么意思？什么时候会出现这种情况？
+		// dashboard 会定时通知peoxy更新slots信息，然后online才会置为true
 		if !d.isOnline() {
 			go func() {
 				s.Conn.Encode(redis.NewErrorf("ERR router is not online"), true)
