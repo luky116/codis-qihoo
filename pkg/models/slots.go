@@ -42,8 +42,8 @@ type SlotMapping struct {
 	GroupId int `json:"group_id"`
 
 	Action struct {
-		Index    int    `json:"index,omitempty"` //当前需要操作的最大索引ID
-		State    string `json:"state,omitempty"`
+		Index    int    `json:"index,omitempty"`     //当前需要操作的最大索引ID
+		State    string `json:"state,omitempty"`     // slot迁移的动作
 		TargetId int    `json:"target_id,omitempty"` // 被迁移到的组ID
 	} `json:"action"`
 }

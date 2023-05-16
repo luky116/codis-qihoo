@@ -11,7 +11,8 @@ type Group struct {
 
 	Promoting struct {
 		Index int `json:"index,omitempty"`
-		// 如果 server 发生了手动 主->从，或是 从->主 的动作，State会变为pendding
+		// 如果 server 发生了手动 【主->从，或是】 从->主 的动作，State会变为pendding
+		// todo 应该是，只有 从->主 的时候，会改变这个字段的状态
 		State string `json:"state,omitempty"`
 	} `json:"promoting"`
 

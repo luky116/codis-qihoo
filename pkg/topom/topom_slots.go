@@ -385,6 +385,7 @@ func (s *Topom) newSlotActionExecutor(sid int) (func(db int) (remains int, nextd
 		if s.action.disabled.IsTrue() {
 			return nil, nil
 		}
+		// 是否发生 从->主 的事情
 		if ctx.isGroupPromoting(m.GroupId) {
 			return nil, nil
 		}

@@ -43,7 +43,7 @@ func (s *Topom) ProcessSlotAction() error {
 		}
 		// 并行迁移协程数量，用户通过配置文件指定
 		var parallel = math2.MaxInt(1, s.config.MigrationParallelSlots)
-		// 并行进行迁移
+		// 往plans里面加入parallel个待处理的数据，以便后面并行处理
 		for parallel > len(plans) {
 			//状态转移在这里完成
 			_, ok, err := s.SlotActionPrepareFilter(accept, update)

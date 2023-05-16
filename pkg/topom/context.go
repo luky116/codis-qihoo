@@ -93,6 +93,8 @@ func (ctx *context) toSlot(m *models.SlotMapping, p *models.Proxy) *models.Slot 
 		slot.BackendAddrGroupId = m.GroupId
 		slot.ReplicaGroups = ctx.toReplicaGroups(m.GroupId, p)
 	case models.ActionPreparing:
+		// 没有从server信息，全部打到主server
+		// todo 为啥没有ReplicaGroups？
 		slot.BackendAddr = ctx.getGroupMaster(m.GroupId)
 		slot.BackendAddrGroupId = m.GroupId
 	case models.ActionPrepared:

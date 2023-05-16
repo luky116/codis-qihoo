@@ -409,9 +409,40 @@ slotsmgrtone_command(client *c, sds host, sds port, int timeout, robj *key) {
     return 1;
 }
 
+
 /* *
  * slotsmgrtslot host port timeout slot
  * */
+
+/**
+SLOTSMGRTSLOT host port timeout slot
+
+ 命令说明：随机选择 slot 下的 1 个 key-value 到迁移到目标机（同步 IO 操作）
+     如果当前 slot 已经空了或者选择的 key 刚好过期，返回 0
+     如果当前 slot 下面还有 key 则选择一个进行迁移
+     同时返回当前 slot 剩余 key 的个数
+     迁移过程在目标机器调用 slotsrestore 命令，迁移会 覆盖旧值
+
+ 命令参数：
+     host:port - 目标机
+     redis 内部缓存到 host:port 的连接 30s，超时或错误则关闭
+     timeout - 操作超时，单位 ms
+     过程需要 3 个同步操作：
+     建立连接（可被缓存优化）
+     发送 key-value 数据
+     接受目标机返回
+     指令保证每个操作不超过 timeout
+     slot - 指定迁移的 slot 序号
+
+ 返回结果： 操作返回 int
+   response := []int{succ,size}
+   其中：
+       INT succ : 表示迁移是否成功。
+           0 表示当前 slot 已经空了（迁移成功个数=0）
+           1 表示迁移一个 key 成功，并从本地删除（迁移成功个数=1）
+       INT size : 表示 slot 下剩余 key 的个数
+ **/
+
 void
 slotsmgrtslotCommand(client *c) {
     sds host = c->argv[1]->ptr;
