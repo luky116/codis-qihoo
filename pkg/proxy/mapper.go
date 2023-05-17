@@ -50,10 +50,10 @@ type OpInfo struct {
 }
 
 const (
-	FlagWrite = 1 << iota
-	FlagMasterOnly
-	FlagMayWrite
-	FlagNotAllow
+	FlagWrite      = 1 << iota //    1
+	FlagMasterOnly             //   10
+	FlagMayWrite               //  100
+	FlagNotAllow               // 1000
 )
 
 var opTable = make(map[string]OpInfo, 256)

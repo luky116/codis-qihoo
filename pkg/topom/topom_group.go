@@ -309,12 +309,13 @@ func (s *Topom) GroupPromoteServer(gid int, addr string) error {
 
 		for _, x := range slice {
 			x.Action.Index = 0
+			// todo 这里为啥要改为nothing？
 			x.Action.State = models.ActionNothing
 		}
 
 		g.Servers = slice
 		g.Promoting.Index = 0
-		// todo 为啥这里先更新为finished？
+		// todo 为啥这里先更新为finished？万一这里中断了，怎么执行slave of no one呢？
 		g.Promoting.State = models.ActionFinished
 		if err := s.storeUpdateGroup(g); err != nil {
 			return err
@@ -420,6 +421,7 @@ func (s *Topom) EnableReplicaGroups(gid int, addr string, value bool) error {
 		return err
 	}
 
+	// 正在进行从升级主的操作
 	if g.Promoting.State != models.ActionNothing {
 		return errors.Errorf("group-[%d] is promoting", g.Id)
 	}

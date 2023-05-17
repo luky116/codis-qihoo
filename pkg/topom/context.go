@@ -94,7 +94,7 @@ func (ctx *context) toSlot(m *models.SlotMapping, p *models.Proxy) *models.Slot 
 		slot.ReplicaGroups = ctx.toReplicaGroups(m.GroupId, p)
 	case models.ActionPreparing:
 		// 没有从server信息，全部打到主server
-		// todo 为啥没有ReplicaGroups？
+		// 如果slot准备被迁移，只有master节点可以处理请求
 		slot.BackendAddr = ctx.getGroupMaster(m.GroupId)
 		slot.BackendAddrGroupId = m.GroupId
 	case models.ActionPrepared:
@@ -158,6 +158,7 @@ func (ctx *context) toReplicaGroups(gid int, p *models.Proxy) [][]string {
 	}
 	var groups [3][]string
 	for _, s := range g.Servers {
+		// ReplicaGroup 是否允许从节点处理请求
 		if s.ReplicaGroup {
 			p := getPriority(s)
 			groups[p] = append(groups[p], s.Addr)
