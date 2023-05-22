@@ -360,7 +360,7 @@ func (s *Topom) GroupPromoteServer(gid int, addr string) error {
 	}
 }
 
-//执行codis集群可感知的主从切换
+//更新group里面的主从信息
 func (s *Topom) trySwitchGroupMaster(gid int, master string, cache *redis.InfoCache) error {
 	ctx, err := s.newContext()
 	if err != nil {

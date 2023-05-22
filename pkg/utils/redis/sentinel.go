@@ -106,6 +106,7 @@ func (s *Sentinel) dispatch(ctx context.Context, sentinel string, timeout time.D
 	}
 }
 
+// client = sentinel
 //订阅"+switch-master"成功则返回true
 func (s *Sentinel) subscribeCommand(client *Client, sentinel string,
 	onSubscribed func()) error {
@@ -194,6 +195,7 @@ func (s *Sentinel) Subscribe(sentinels []string, timeout time.Duration, onMajori
 	for i := range sentinels {
 		go func(sentinel string) {
 			notified, err := s.subscribeDispatch(cntx, sentinel, timeout, func() {
+				// 第一次启动
 				if subscribed.Incr() == int64(majority) {
 					onMajoritySubscribed()
 				}
@@ -466,7 +468,7 @@ func (s *Sentinel) monitorGroupsCommand(client *Client, sentniel string, config 
 		return err
 	}
 	go func() {
-		// 开启监控
+		// 开启监控mon
 		for gid, tcpAddr := range groups {
 			var ip, port = tcpAddr.IP.String(), tcpAddr.Port
 			// NodeName = Product-GroupID

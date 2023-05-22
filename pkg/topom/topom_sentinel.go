@@ -85,6 +85,7 @@ func (s *Topom) DelSentinel(addr string, force bool) error {
 	return s.storeUpdateSentinel(p)
 }
 
+//更新group里面的主从信息
 func (s *Topom) SwitchMasters(masters map[int]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -152,6 +153,7 @@ func (s *Topom) rewatchSentinels(servers []string) {
 				}
 			}()
 			go func() {
+				// 第一次启动，或是收到主从切换的消息，都会触发操作
 				for range trigger {
 					var success int
 					for i := 0; i != 10 && !p.IsCanceled() && success != 2; i++ {
