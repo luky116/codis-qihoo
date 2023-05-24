@@ -1,12 +1,12 @@
 mkdir -p /data01/redis
 
-make
-
 kill `lsof -t -i:9222`
 kill `lsof -t -i:9223`
 kill `lsof -t -i:9224`
 kill `lsof -t -i:9225`
 kill `lsof -t -i:9226`
+
+make
 
 rm -rf /tmp/redis_9222.pid
 rm -rf /tmp/redis_9223.pid
