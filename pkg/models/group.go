@@ -28,6 +28,9 @@ type GroupServer struct {
 		State string `json:"state,omitempty"`
 	} `json:"action"`
 
+	// 如果上次心跳失败，则置为true，不再提供服务，等待人工介入
+	// todo 如果为true，不对外提供服务
+	EverCrashed  bool `json:"ever_crashed"`
 	ReplicaGroup bool `json:"replica_group"`
 }
 

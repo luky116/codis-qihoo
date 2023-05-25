@@ -133,6 +133,7 @@ func (s *Sentinel) subscribeCommand(client *Client, sentinel string,
 	}
 	onSubscribed()
 	for {
+		// 阻塞，直到收到 +switch-master 消息
 		values, err := redigo.Values(client.Receive())
 		if err != nil {
 			return errors.Trace(err)
@@ -194,6 +195,8 @@ func (s *Sentinel) Subscribe(sentinels []string, timeout time.Duration, onMajori
 	var subscribed atomic2.Int64
 	for i := range sentinels {
 		go func(sentinel string) {
+			// 订阅所有sentinel的+saitch-master消息
+			// 阻塞，直到收到 +switch-master 消息
 			notified, err := s.subscribeDispatch(cntx, sentinel, timeout, func() {
 				// 第一次启动
 				if subscribed.Incr() == int64(majority) {
@@ -308,6 +311,48 @@ func (s *Sentinel) mastersCommand(client *Client) (map[int]map[string]string, er
 	}()
 	// SENTINEL master 使用参考：http://redisdoc.com/topic/sentinel.html
 	// 作用：列出所有被监视的master服务
+	/**
+	1) "name"
+	    2) "codis-demo-1"
+	    3) "ip"
+	    4) "10.174.22.228"
+	    5) "port"
+	    6) "9222"
+	    7) "runid"
+	    8) "d6e5e05e0c9b1eb9e1aebf635c5fd8a11f66ead5"
+	    9) "flags"
+	   10) "master"
+	   11) "link-pending-commands"
+	   12) "0"
+	   13) "link-refcount"
+	   14) "1"
+	   15) "last-ping-sent"
+	   16) "0"
+	   17) "last-ok-ping-reply"
+	   18) "205"
+	   19) "last-ping-reply"
+	   20) "205"
+	   21) "down-after-milliseconds"
+	   22) "30000"
+	   23) "info-refresh"
+	   24) "5456"
+	   25) "role-reported"
+	   26) "master"
+	   27) "role-reported-time"
+	   28) "5558"
+	   29) "config-epoch"
+	   30) "0"
+	   31) "num-slaves"
+	   32) "2"
+	   33) "num-other-sentinels"
+	   34) "0"
+	   35) "quorum"
+	   36) "2"
+	   37) "failover-timeout"
+	   38) "300000"
+	   39) "parallel-syncs"
+	   40) "1"
+	*/
 	values, err := redigo.Values(client.Do("SENTINEL", "masters"))
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -327,6 +372,7 @@ func (s *Sentinel) mastersCommand(client *Client) (map[int]map[string]string, er
 	return masters, nil
 }
 
+// 得到每个group的maste节点，以及其基本信息
 func (s *Sentinel) mastersDispatch(ctx context.Context, sentinel string, timeout time.Duration) (map[int]*SentinelMaster, error) {
 	var masters = make(map[int]*SentinelMaster)
 	var err = s.dispatch(ctx, sentinel, timeout, func(c *Client) error {
@@ -366,8 +412,11 @@ func (s *Sentinel) mastersDispatch(ctx context.Context, sentinel string, timeout
 }
 
 type SentinelMaster struct {
-	Addr  string
-	Info  map[string]string
+	Addr string
+	Info map[string]string
+	//https://zhuanlan.zhihu.com/p/44658603
+	// Redis Cluster 使用了类似于 Raft 算法 term（任期）的概念称为 epoch（纪元），用来给事件增加版本号。
+	// config-epoch：越大，说明配置越新
 	Epoch int64
 }
 
@@ -432,6 +481,7 @@ func (s *Sentinel) Masters(sentinels []string, timeout time.Duration) (map[int]s
 				continue
 			}
 			for gid, master := range m {
+				// epoch 越大，说明数据越新
 				if current[gid] == nil || current[gid].Epoch < master.Epoch {
 					current[gid] = master
 					// groupID -> master 节点

@@ -107,8 +107,12 @@ func (s *Topom) SwitchMasters(masters map[int]string) error {
 	return nil
 }
 
+// 1、ha 订阅所有sentinel的+switch-master消息
+// 2、持续监听，直到收到 +switch-master 消息，并更新 group 中的主从信息
 func (s *Topom) rewatchSentinels(servers []string) {
 	if s.ha.monitor != nil {
+		// 结束上一次监听，开启新的监听
+		// todo疑问：假如这里被取消，那里面开启的协程好像不会断啊？
 		s.ha.monitor.Cancel()
 		s.ha.monitor = nil
 	}
@@ -141,10 +145,11 @@ func (s *Topom) rewatchSentinels(servers []string) {
 					default:
 					}
 				}
+				// 这里是死循环，p只要存在，就永远不会退出
 				for !p.IsCanceled() {
 					timeout := time.Minute * 15
 					retryAt := time.Now().Add(time.Second * 10)
-					//订阅切主信息
+					//订阅切主信息，并等待接收 +switch-master 消息
 					if !p.Subscribe(servers, timeout, callback) {
 						delayUntil(retryAt)
 					} else {
@@ -158,11 +163,13 @@ func (s *Topom) rewatchSentinels(servers []string) {
 					var success int
 					for i := 0; i != 10 && !p.IsCanceled() && success != 2; i++ {
 						timeout := time.Second * 5
-						//得到最新的Master
+						// 通过 sentinel 查询最新的 master ，并更新 group 中的 master 信息
 						masters, err := p.Masters(servers, timeout)
 						if err != nil {
 							log.WarnErrorf(err, "fetch group masters failed")
 						} else {
+							// 这里还是做了判断，说明取消后，还是需要等下一个消息到来，才会退出。
+							// todo 风险：假如用户频繁点击 刷新 sentinel，可能会导致问题
 							if !p.IsCanceled() {
 								// 更新配置中心的master和slave信息
 								s.SwitchMasters(masters)
