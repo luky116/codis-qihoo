@@ -65,6 +65,7 @@ func (s *Topom) ProcessSlotAction() error {
 				var err = s.processSlotAction(sid)
 				if err != nil {
 					status := fmt.Sprintf("[ERROR] Slot[%04d]: %s", sid, err)
+					// 保存错误状态
 					s.action.progress.status.Store(status)
 				} else {
 					s.action.progress.status.Store("")

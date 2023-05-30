@@ -72,6 +72,7 @@ type Topom struct {
 		disabled atomic2.Bool
 
 		progress struct {
+			// 当slot进行迁移的时候出现问题，这里会保存状态
 			status atomic.Value
 		}
 		//一个计数器，有一个slot等待迁移，就加一；执行一个slot的迁移，就减一
